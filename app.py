@@ -61,7 +61,6 @@ def load_all_sessions():
         return pd.read_parquet("sessions_compressed.parquet")
     return None
 
-# ⭐ 파일 이름을 두 개 다 확인하도록 업그레이드!
 @st.cache_data
 def load_trajectory():
     for f in ["trajectory_compressed.parquet", "trajectory_super_light.parquet"]:
@@ -162,55 +161,44 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ [완전 교체] 절대 튕기지 않는 Streamlit 내장 푸른색 Area 그래프
+            # ⭐ [새로운 방식 적용] 초경량 시간 요약본 파일(time_trend_light.csv) 읽어오기
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
             
-            if df_traj is None:
-                st.warning("⚠️ 깃허브에 동선 파일(trajectory_compressed.parquet 또는 trajectory_super_light.parquet)이 없습니다!")
-            elif 'time_index' not in df_traj.columns:
-                st.warning(f"⚠️ 데이터 안에 'time_index' 기둥이 없습니다! 현재 발견된 기둥: {df_traj.columns.tolist()}")
-            else:
-                try:
-                    if selected_date == "전체 누적 보기":
-                        t_df = df_traj.copy()
-                    else:
-                        if 'date' in df_traj.columns:
-                            t_df = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))].copy()
-                        else:
-                            # 동선 데이터에 아예 date가 없으면 전체 데이터를 씁니다!
-                            t_df = df_traj.copy()
-                            st.info("💡 동선 데이터에 '날짜' 정보가 분리되어 있지 않아 전체 트래픽 기준으로 보여집니다.")
+            try:
+                # 깃허브에 올린 초경량 파일 읽기
+                trend_df = pd.read_csv("time_trend_light.csv")
+                
+                # 사용자가 선택한 날짜와 똑같은 날짜의 데이터만 필터링 (안전장치 적용)
+                if selected_date != "전체 누적 보기":
+                    trend_df = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
 
-                    if t_df.empty:
-                        st.info("💡 선택하신 날짜의 10분 단위 트래픽 데이터가 없습니다.")
-                    else:
-                        # 10분 단위로 세밀하게 쪼개기
-                        t_df['time_index_num'] = pd.to_numeric(t_df['time_index'], errors='coerce').fillna(0)
-                        t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400
-                        t_df['time_bin_10m'] = t_df['total_seconds'] // 600
-                        
-                        t_df['hour'] = (t_df['time_bin_10m'] * 10) // 60 % 24
-                        t_df['minute'] = (t_df['time_bin_10m'] * 10) % 60
-                        # 14:30 같은 예쁜 시간 글자로 만들기
-                        t_df['시간대'] = t_df['hour'].astype(int).astype(str).str.zfill(2) + ":" + t_df['minute'].astype(int).astype(str).str.zfill(2)
-                        
-                        # 방문객 수 계산
-                        if 'real_user_id' in t_df.columns:
-                            trend = t_df.groupby('시간대')['real_user_id'].nunique().reset_index()
-                        else:
-                            trend = t_df.groupby('시간대').size().reset_index(name='real_user_id')
-                        
-                        trend = trend.rename(columns={'real_user_id': '방문객 수'}).set_index('시간대')
-                        trend = trend.sort_index()
-                        
-                        # ⭐ Streamlit의 가장 강력하고 예쁜 푸른색 내장 그래프 소환!
-                        st.area_chart(trend, color="#3B82F6", use_container_width=True)
-                        
-                except Exception as e:
-                    st.error(f"⚠️ 그래프 그리기 중 알 수 없는 에러가 발생했습니다: {e}")
-            
+                if not trend_df.empty:
+                    # Altair 그래프가 이해할 수 있는 진짜 날짜(Datetime) 포맷으로 가공
+                    base_date = pd.to_datetime("2026-01-01")
+                    trend_df['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + trend_df['time_str'])
+                    trend_df['트래픽'] = trend_df['visitors']
+
+                    # 푸른 물결(Area) 그래프 그리기
+                    base = alt.Chart(trend_df).encode(
+                        x=alt.X('시간:T', title='시간 (영업시간)', axis=alt.Axis(format='%H:%M', grid=True, tickCount=12)),
+                        y=alt.Y('트래픽:Q', title='방문객 수 (명)'),
+                        tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('트래픽:Q', title='방문객 수')]
+                    )
+                    area = base.mark_area(interpolate='monotone', color='#60A5FA', opacity=0.3)
+                    line = base.mark_line(interpolate='monotone', color='#2563EB', strokeWidth=3)
+                    
+                    chart = (area + line).properties(height=350).interactive()
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
+            except FileNotFoundError:
+                st.warning("⚠️ 'time_trend_light.csv' 파일이 깃허브에 없습니다! 이전 답변의 코드로 파일을 생성하여 업로드해주세요.")
+            except Exception as e:
+                st.error(f"그래프 생성 중 오류: {e}")
+
             st.markdown("---")
 
+            # 기존 구역별 방문 횟수
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             all_zones = filtered_df['zone'].value_counts()
             
