@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from scipy.ndimage import gaussian_filter
-import glob
 import os
 import platform
 import re
@@ -68,7 +67,7 @@ def load_trajectory():
         return pd.read_parquet("trajectory_super_light.parquet")
     return None
 
-# ⭐ 새롭게 추가된 날씨 데이터 로드 함수!
+# ⭐ 에러 원인을 화면에 띄워주는 강력한 날씨 로드 함수!
 @st.cache_data
 def load_weather():
     weather_dict = {}
@@ -80,7 +79,6 @@ def load_weather():
                 weather = str(row['Weather']).strip()
                 holiday_flag = str(row['Holiday']).strip().lower()
                 
-                # 평일/휴일 및 날씨 이모지 변환
                 holiday = "🔴 휴일" if holiday_flag == 'yes' else "🟢 평일"
                 weather_lower = weather.lower()
                 if "rain" in weather_lower: icon = "🌧️"
@@ -88,17 +86,17 @@ def load_weather():
                 elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
                 else: icon = "🌤️"
                 
-                # "2025-10-01 [🌧️ Rainy | 🟢 평일]" 형태의 예쁜 이름표 완성
                 weather_dict[date_str] = f"{date_str} [{icon} {weather} | {holiday}]"
         except Exception as e:
-            pass
+            st.error(f"⚠️ 날씨 데이터를 읽는 중 오류 발생: {e}")
+    else:
+        st.warning("⚠️ 'Day_Weather_Enhanced.csv' 파일을 찾을 수 없습니다. 깃허브에 파일이 있는지 확인해주세요.")
     return weather_dict
 
 df_all = load_all_sessions()
 df_traj = load_trajectory()
-weather_info = load_weather() # 날씨 정보를 가져옵니다.
+weather_info = load_weather()
 
-# ⭐ 드롭다운 메뉴의 글자만 바꿔주는 마법의 함수
 def format_date_option(d):
     if d == "전체 누적 보기":
         return d
@@ -132,8 +130,6 @@ if menu == "📊 트래픽 요약":
             return int(nums[-1]) if nums else 0
             
         available_dates = sorted(df_all['date'].unique(), key=sort_date)
-        
-        # ⭐ 여기에 format_func를 추가하여 화면에 날씨가 보이게 합니다.
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
@@ -142,7 +138,6 @@ if menu == "📊 트래픽 요약":
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
             filtered_df = df_all[df_all['date'] == selected_date]
-            # ⭐ 제목에도 날씨와 휴일 정보가 뜨도록 합니다.
             display_title = weather_info.get(str(selected_date), str(selected_date))
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
@@ -195,8 +190,6 @@ elif menu == "🔥 정밀 히트맵":
             return int(nums[-1]) if nums else 0
             
         available_dates = sorted(df_traj['date'].unique(), key=sort_date)
-        
-        # ⭐ 히트맵 메뉴의 드롭다운에도 날씨 포맷을 적용합니다.
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
@@ -204,7 +197,6 @@ elif menu == "🔥 정밀 히트맵":
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
             filtered_traj = df_traj[df_traj['date'] == selected_date]
-            # ⭐ 제목에도 날씨 적용
             display_title = weather_info.get(str(selected_date), str(selected_date))
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
 
@@ -354,6 +346,5 @@ elif menu == "📍 센서(Sward) 위치":
             
         except FileNotFoundError:
             st.error("⚠️ 'swards (1).csv' 파일을 찾을 수 없습니다.")
-            st.info("이 기능이 작동하려면 깃허브(GitHub) 창고에 'swards (1).csv' 파일이 업로드되어 있어야 합니다!")
         except Exception as e:
             st.error(f"오류가 발생했습니다: {e}")
