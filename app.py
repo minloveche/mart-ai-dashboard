@@ -77,26 +77,53 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", widt
 st.sidebar.title("마트 AI 대시보드")
 menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 매대 시뮬레이터"])
 
+
 # ====================================================================
 # [메뉴 1] 트래픽 요약
 # ====================================================================
 if menu == "📊 트래픽 요약":
-    st.title("📊 마트 트래픽 요약 (1주일)")
-    if df_all is not None:
-        col1, col2, col3 = st.columns(3)
-        total_users = df_all['real_user_id'].nunique()
-        total_stays = df_all['stay_sec'].sum() / 3600 # 시간
-        top_zone = df_all['zone'].value_counts().index[0]
+    st.title("📊 마트 트래픽 요약")
+    
+    if df_all is not None and 'date' in df_all.columns:
+        import re
+        
+        # 1. 10월 1일, 10월 2일 순서대로 깔끔하게 정렬하기
+        def sort_date(d):
+            nums = re.findall(r'\d+', str(d))
+            return int(nums[-1]) if nums else 0
+            
+        available_dates = sorted(df_all['date'].unique(), key=sort_date)
+        
+        # 2. 날짜 선택용 드롭다운 메뉴 만들기
+        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates)
+        
+        # 3. 선택한 날짜에 맞춰서 데이터 필터링하기
+        if selected_date == "전체 누적 보기":
+            filtered_df = df_all
+            st.markdown(f"### 📈 전체 누적 트래픽")
+        else:
+            filtered_df = df_all[df_all['date'] == selected_date]
+            st.markdown(f"### 📈 {selected_date} 일자 트래픽")
+            
+        # 4. 필터링된 데이터로 화면에 보여주기
+        if not filtered_df.empty:
+            col1, col2, col3 = st.columns(3)
+            total_users = filtered_df['real_user_id'].nunique()
+            total_stays = filtered_df['stay_sec'].sum() / 3600
+            top_zone = filtered_df['zone'].value_counts().index[0]
 
-        col1.metric("총 방문 고객 (스티칭 완료)", f"{total_users:,} 명")
-        col2.metric("고객 총 누적 체류시간", f"{total_stays:,.0f} 시간")
-        col3.metric("가장 붐빈 코너 1위", top_zone)
+            col1.metric("해당 기간 방문 고객", f"{total_users:,} 명")
+            col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
+            col3.metric("가장 붐빈 코너 1위", top_zone)
 
-        st.markdown("### 🏆 구역별 방문 횟수 TOP 10")
-        top10 = df_all['zone'].value_counts().head(10)
-        st.bar_chart(top10)
+            st.markdown("### 🏆 구역별 방문 횟수 TOP 10")
+            top10 = filtered_df['zone'].value_counts().head(10)
+            st.bar_chart(top10)
+        else:
+            st.info("데이터가 없습니다.")
+            
     else:
-        st.error("데이터 파일('Zone_Visit_Sessions_29_CleanFlow*.csv')이 필요합니다.")
+        st.error("데이터 파일에 날짜 정보가 없습니다. 데이터를 다시 압축해주세요.")
 
 # ====================================================================
 # [메뉴 2] 정밀 히트맵
