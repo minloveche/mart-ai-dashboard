@@ -68,6 +68,10 @@ def load_trajectory():
         return pd.read_parquet("trajectory_super_light.parquet")
     return None
 
+# ⭐ 이 아래 두 줄이 실수로 지워졌던 범인입니다! 반드시 있어야 합니다! ⭐
+df_all = load_all_sessions()
+df_traj = load_trajectory()
+
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
