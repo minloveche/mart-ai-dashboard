@@ -105,10 +105,24 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     return str(d)
 
+# ⭐ [완벽 진화] '2025-10-01' 이든 '1.0' 이든 '1' 이든 똑같이 인식하는 마법의 함수!
 def safe_date_match(val, target):
-    v1 = str(val).split('.')[0].strip()
-    v2 = str(target).split('.')[0].strip()
-    return v1 == v2
+    try:
+        # 먼저 소수점(1.0의 .0) 찌꺼기를 날려버립니다.
+        v1_clean = str(val).split('.')[0]
+        v2_clean = str(target).split('.')[0]
+        
+        # 글자 안에서 숫자만 모두 뽑아냅니다. (예: '2025-10-01' -> ['2025', '10', '01'])
+        v1_nums = re.findall(r'\d+', v1_clean)
+        v2_nums = re.findall(r'\d+', v2_clean)
+        
+        # 배열의 가장 마지막 숫자(1일, 2일 할 때의 '일')를 정수로 바꿔서 비교합니다!
+        v1_day = int(v1_nums[-1]) if v1_nums else str(v1_clean)
+        v2_day = int(v2_nums[-1]) if v2_nums else str(v2_clean)
+        
+        return v1_day == v2_day
+    except:
+        return str(val) == str(target)
 
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
@@ -161,27 +175,25 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ [새로운 방식 적용] 초경량 시간 요약본 파일(time_trend_light.csv) 읽어오기
+            # ⭐ 시간에 따른 푸른색 선 그래프 
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
             
             try:
                 # 깃허브에 올린 초경량 파일 읽기
                 trend_df = pd.read_csv("time_trend_light.csv")
                 
-                # 사용자가 선택한 날짜와 똑같은 날짜의 데이터만 필터링 (안전장치 적용)
+                # 사용자가 선택한 날짜와 똑같은 날짜의 데이터만 필터링 (강력해진 필터 적용!)
                 if selected_date != "전체 누적 보기":
                     trend_df = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
 
                 if not trend_df.empty:
-                    # Altair 그래프가 이해할 수 있는 진짜 날짜(Datetime) 포맷으로 가공
                     base_date = pd.to_datetime("2026-01-01")
                     trend_df['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + trend_df['time_str'])
                     trend_df['트래픽'] = trend_df['visitors']
 
-                    # 푸른 물결(Area) 그래프 그리기
                     base = alt.Chart(trend_df).encode(
                         x=alt.X('시간:T', title='시간 (영업시간)', axis=alt.Axis(format='%H:%M', grid=True, tickCount=12)),
-                        y=alt.Y('트래픽:Q', title='방문객 수 (명)'),
+                        y=alt.Y('트래픽:Q', title='동시 체류 방문객 수 (명)'),
                         tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('트래픽:Q', title='방문객 수')]
                     )
                     area = base.mark_area(interpolate='monotone', color='#60A5FA', opacity=0.3)
@@ -198,7 +210,6 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
 
-            # 기존 구역별 방문 횟수
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             all_zones = filtered_df['zone'].value_counts()
             
