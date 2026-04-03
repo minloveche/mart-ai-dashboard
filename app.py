@@ -9,6 +9,7 @@ import platform
 import re
 import glob
 import altair as alt
+import datetime # ⭐ 시간 슬라이더를 위한 기능 추가!
 
 # --- [1. 기본 설정 및 한글 폰트] ---
 st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
@@ -21,60 +22,23 @@ else:
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# ⭐ [디자인 업그레이드!] 모든 상자(Container)를 둥근 고급 카드로 만드는 마법
+# ⭐ [디자인 업그레이드!] 
 custom_css = """
 <style>
-    /* 1. 전체 배경을 세련된 쿨톤 그레이로 */
-    .stApp {
-        background-color: #F8FAFC;
-    }
-    
-    /* 2. 사이드바는 다크 네이비 */
-    [data-testid="stSidebar"] {
-        background-color: #1E293B !important;
-    }
-    [data-testid="stSidebar"] * {
-        color: #F1F5F9 !important;
-    }
-    
-    /* 3. 제목 폰트 스타일링 */
-    h1, h2, h3 {
-        color: #0F172A;
-        font-weight: 800 !important;
-        letter-spacing: -0.5px;
-    }
-    
-    /* 4. 수치 표시(Metric) 카드 */
+    .stApp { background-color: #F8FAFC; }
+    [data-testid="stSidebar"] { background-color: #1E293B !important; }
+    [data-testid="stSidebar"] * { color: #F1F5F9 !important; }
+    h1, h2, h3 { color: #0F172A; font-weight: 800 !important; letter-spacing: -0.5px; }
     [data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        border: 1px solid #E2E8F0;
-        text-align: center;
-        transition: transform 0.2s;
+        background-color: #FFFFFF; padding: 20px; border-radius: 15px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #E2E8F0; text-align: center; transition: transform 0.2s;
     }
-    [data-testid="stMetric"]:hover {
-        transform: translateY(-5px);
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 15px;
-        color: #64748B;
-        font-weight: 600;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 36px;
-        color: #2563EB;
-        font-weight: 900;
-    }
-    
-    /* ⭐ 5. 컨트롤러 상자들을 세련된 카드로 만들기 (테두리 있는 컨테이너 대상) */
+    [data-testid="stMetric"]:hover { transform: translateY(-5px); }
+    [data-testid="stMetricLabel"] { font-size: 15px; color: #64748B; font-weight: 600; }
+    [data-testid="stMetricValue"] { font-size: 36px; color: #2563EB; font-weight: 900; }
     [data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #FFFFFF !important;
-        border-radius: 15px !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
-        border: 1px solid #E2E8F0 !important;
-        padding: 15px !important;
+        background-color: #FFFFFF !important; border-radius: 15px !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; border: 1px solid #E2E8F0 !important; padding: 15px !important;
     }
 </style>
 """
@@ -306,7 +270,7 @@ if menu == "📊 트래픽 요약":
 # ====================================================================
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
-    st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
+    st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도, 그리고 **시간대**를 실시간으로 확인하세요.")
     
     if df_traj is not None and 'date' in df_traj.columns:
         available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
@@ -324,9 +288,19 @@ elif menu == "🔥 정밀 히트맵":
             col1, col2 = st.columns([1, 3])
             
             with col1:
-                # ⭐ [핵심!] 컨트롤러를 예쁜 하얀색 상자(Card) 안에 쏙 집어넣었습니다!
                 with st.container(border=True):
                     st.markdown("<h4 style='color: #1E293B; margin-top:0; font-size:18px;'>🎛️ 히트맵 컨트롤러</h4>", unsafe_allow_html=True)
+                    
+                    # ⭐ [새 기능!] 시간대 양방향 슬라이더 
+                    time_range = st.slider(
+                        "⏰ 분석 시간대 (영업시간)",
+                        min_value=datetime.time(9, 0),  # 오픈
+                        max_value=datetime.time(23, 0), # 마감
+                        value=(datetime.time(10, 0), datetime.time(22, 0)), # 기본값
+                        format="HH:mm"
+                    )
+                    
+                    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
                     blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
                     red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
                 
@@ -339,8 +313,21 @@ elif menu == "🔥 정밀 히트맵":
                 else:
                     ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
 
-                df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)]
+                # ⭐ 슬라이더에서 선택한 시간(초 단위)으로 동선 데이터 필터링하기!
+                df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
                 
+                if 'time_index' in df_exact.columns and not df_exact.empty:
+                    # time_index (10초 단위)를 이용해 그날의 시간(초) 계산
+                    time_idx = pd.to_numeric(df_exact['time_index'], errors='coerce').fillna(0)
+                    total_secs = (time_idx * 10) % 86400
+                    
+                    # 슬라이더 값(시/분)을 초로 바꾸기
+                    min_sec = time_range[0].hour * 3600 + time_range[0].minute * 60
+                    max_sec = time_range[1].hour * 3600 + time_range[1].minute * 60
+                    
+                    # 선택한 시간에 포함되는 발자국만 남기기!
+                    df_exact = df_exact[(total_secs >= min_sec) & (total_secs <= max_sec)]
+
                 if len(df_exact) > 0:
                     heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
                     heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
@@ -355,7 +342,7 @@ elif menu == "🔥 정밀 히트맵":
                     ax.axis('off')
                     st.pyplot(fig)
                 else:
-                    st.warning("선택한 날짜에 유효한 동선(x, y) 데이터가 부족하여 히트맵을 그릴 수 없습니다.")
+                    st.warning("⚠️ 선택하신 시간대에는 매장 내에 고객 동선 데이터가 없습니다.")
         else:
             st.info("선택한 날짜에 동선 데이터가 없습니다.")
     else:
@@ -371,7 +358,6 @@ elif menu == "🤖 AI 매대 시뮬레이터":
     if df_all is not None:
         zones_list = list(ZONES.keys())
         
-        # ⭐ 여기도 공식 상자(Card) 기능으로 깔끔하게 정리했습니다!
         with st.container(border=True):
             st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔄 매대 위치 스왑 설정</h4>", unsafe_allow_html=True)
             col1, col2 = st.columns(2)
@@ -445,7 +431,6 @@ elif menu == "📍 센서(Sward) 위치":
     col1, col2 = st.columns([1, 3])
     
     with col1:
-        # ⭐ 여기도 예쁜 카드로 통일!
         with st.container(border=True):
             st.markdown("<h4 style='color: #047857; margin-top:0;'>💡 센서 연동 데이터</h4>", unsafe_allow_html=True)
             st.markdown("<p style='color: #475569; font-size: 14px; margin-bottom:0;'><code>swards (1).csv</code> 파일의 좌표를 기반으로 매장 지도 위에 실시간 매핑됩니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.</p>", unsafe_allow_html=True)
