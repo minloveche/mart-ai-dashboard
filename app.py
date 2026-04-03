@@ -78,20 +78,12 @@ st.sidebar.title("마트 AI 대시보드")
 menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 매대 시뮬레이터"])
 
 
-# ====================================================================
-# [메뉴 1] 트래픽 요약
-# ====================================================================
-if menu == "📊 트래픽 요약":
-    st.title("📊 마트 트래픽 요약")
-
-# ====================================================================
 # [메뉴 1] 트래픽 요약
 # ====================================================================
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
     
-    # 👇👇👇 [여기에 아래 코드를 복사해서 붙여넣으세요!] 👇👇👇
-    
+    # [1] 실시간 모니터링 임시 칸
     st.markdown("""
     <div style="border: 3px dashed #CBD5E1; padding: 60px; text-align: center; border-radius: 15px; background-color: #F8FAFC; margin-bottom: 30px;">
         <h3 style="color: #334155; margin-bottom: 10px;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h3>
@@ -102,25 +94,17 @@ if menu == "📊 트래픽 요약":
     </div>
     """, unsafe_allow_html=True)
 
-    # 👆👆👆 [여기까지 복사] 👆👆👆
-    
-    if df_all is not None and 'date' in df_all.columns:
-        # ...(이하 기존 코드 동일)...
-    
+    # [2] 날짜별 트래픽 요약 데이터
     if df_all is not None and 'date' in df_all.columns:
         import re
         
-        # 1. 10월 1일, 10월 2일 순서대로 깔끔하게 정렬하기
         def sort_date(d):
             nums = re.findall(r'\d+', str(d))
             return int(nums[-1]) if nums else 0
             
         available_dates = sorted(df_all['date'].unique(), key=sort_date)
-        
-        # 2. 날짜 선택용 드롭다운 메뉴 만들기
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates)
         
-        # 3. 선택한 날짜에 맞춰서 데이터 필터링하기
         if selected_date == "전체 누적 보기":
             filtered_df = df_all
             st.markdown(f"### 📈 전체 누적 트래픽")
@@ -128,7 +112,6 @@ if menu == "📊 트래픽 요약":
             filtered_df = df_all[df_all['date'] == selected_date]
             st.markdown(f"### 📈 {selected_date} 일자 트래픽")
             
-        # 4. 필터링된 데이터로 화면에 보여주기
         if not filtered_df.empty:
             col1, col2, col3 = st.columns(3)
             total_users = filtered_df['real_user_id'].nunique()
