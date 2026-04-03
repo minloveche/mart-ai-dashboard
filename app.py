@@ -7,6 +7,8 @@ from scipy.ndimage import gaussian_filter
 import glob
 import os
 import platform
+import re
+import altair as alt
 
 # --- [1. 기본 설정 및 한글 폰트] ---
 st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
@@ -53,29 +55,27 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 함수 (캐싱 적용으로 속도 최적화)] ---
+# --- [2. 데이터 로드 함수 (캐싱 적용)] ---
 @st.cache_data
 def load_all_sessions():
-    import os
     if os.path.exists("sessions_compressed.parquet"):
         return pd.read_parquet("sessions_compressed.parquet")
     return None
 
 @st.cache_data
 def load_trajectory():
-    import os
     if os.path.exists("trajectory_super_light.parquet"):
         return pd.read_parquet("trajectory_super_light.parquet")
     return None
 
-# ⭐ 이 아래 두 줄이 실수로 지워졌던 범인입니다! 반드시 있어야 합니다! ⭐
 df_all = load_all_sessions()
 df_traj = load_trajectory()
 
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
-menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 매대 시뮬레이터"])
+# ⭐ 여기에 "📍 센서(Sward) 위치" 메뉴를 추가했습니다!
+menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 매대 시뮬레이터", "📍 센서(Sward) 위치"])
 
 
 # ====================================================================
@@ -84,7 +84,6 @@ menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
     
-    # [1] 실시간 모니터링 임시 칸
     st.markdown("""
     <div style="border: 3px dashed #CBD5E1; padding: 60px; text-align: center; border-radius: 15px; background-color: #F8FAFC; margin-bottom: 30px;">
         <h3 style="color: #334155; margin-bottom: 10px;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h3>
@@ -95,10 +94,7 @@ if menu == "📊 트래픽 요약":
     </div>
     """, unsafe_allow_html=True)
 
-    # [2] 날짜별 트래픽 요약 데이터
     if df_all is not None and 'date' in df_all.columns:
-        import re
-        
         def sort_date(d):
             nums = re.findall(r'\d+', str(d))
             return int(nums[-1]) if nums else 0
@@ -125,13 +121,8 @@ if menu == "📊 트래픽 요약":
             col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
             col3.metric("가장 붐빈 코너 1위", top_zone)
 
-            # ⭐ 제목을 '전체'로 바꿨습니다.
             st.markdown("### 🏆 구역별 전체 방문 횟수")
-            
-            # ⭐ .head(10)을 지워서 모든 구역의 데이터를 가져옵니다.
             all_zones = filtered_df['zone'].value_counts()
-            
-            import altair as alt
             
             df_zones = all_zones.reset_index()
             df_zones.columns = ['구역', '방문횟수']
@@ -144,23 +135,14 @@ if menu == "📊 트래픽 요약":
             )
             
             text = bars.mark_text(
-                align='left',
-                baseline='middle',
-                dx=5,
-                fontSize=13,
-                fontWeight='bold'
-            ).encode(
-                text=alt.Text('방문횟수:Q', format=',')
-            )
+                align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold'
+            ).encode(text=alt.Text('방문횟수:Q', format=','))
             
-            # ⭐ 핵심 마법: 구역 개수에 따라 차트 세로 길이가 '자동'으로 무한정 늘어납니다! (겹침 완벽 방지)
             final_chart = (bars + text).properties(height=alt.Step(35))
-            
             st.altair_chart(final_chart, use_container_width=True)
             
         else:
             st.info("데이터가 없습니다.")
-            
     else:
         st.error("데이터 파일에 날짜 정보가 없습니다. 데이터를 다시 압축해주세요.")
 
@@ -171,20 +153,14 @@ elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
     st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
     
-    # 1. 날짜 데이터가 있는지 확인
     if df_traj is not None and 'date' in df_traj.columns:
-        import re
-        
         def sort_date(d):
             nums = re.findall(r'\d+', str(d))
             return int(nums[-1]) if nums else 0
             
         available_dates = sorted(df_traj['date'].unique(), key=sort_date)
-        
-        # ⭐ 날짜 선택기 (에러 방지를 위해 key="heatmap_date" 추가)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date")
         
-        # 2. 선택한 날짜에 맞게 데이터 걸러내기
         if selected_date == "전체 누적 보기":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
@@ -192,7 +168,6 @@ elif menu == "🔥 정밀 히트맵":
             filtered_traj = df_traj[df_traj['date'] == selected_date]
             st.markdown(f"### 📈 {selected_date} 일자 동선 히트맵")
 
-        # 3. 걸러진 데이터(filtered_traj)로 히트맵 그리기
         if not filtered_traj.empty:
             col1, col2 = st.columns([1, 3])
             with col1:
@@ -209,10 +184,8 @@ elif menu == "🔥 정밀 히트맵":
                 else:
                     ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
 
-                # ⭐ 여기가 핵심! 기존 df_traj 대신 filtered_traj를 사용합니다.
                 df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)]
                 
-                # 데이터가 너무 적을 때의 에러를 방지하는 안전장치
                 if len(df_exact) > 0:
                     heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
                     heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
@@ -232,6 +205,7 @@ elif menu == "🔥 정밀 히트맵":
             st.info("선택한 날짜에 동선 데이터가 없습니다.")
     else:
         st.error("데이터에 날짜 정보가 없거나 'trajectory_super_light.parquet' 파일이 없습니다.")
+
 # ====================================================================
 # [메뉴 3] AI 매대 시뮬레이터 (마르코프 체인)
 # ====================================================================
@@ -253,7 +227,6 @@ elif menu == "🤖 AI 매대 시뮬레이터":
                 st.warning("서로 다른 두 매대를 선택해 주세요.")
             else:
                 with st.spinner("AI가 고객 이동 의도(Intent)를 계산 중입니다..."):
-                    # 1. 중심점 및 거리 계산 함수
                     def get_centers(z_dict):
                         return {z: np.array([(c['x_min']+c['x_max'])/2, (c['y_min']+c['y_max'])/2]) for z, c in z_dict.items()}
                     
@@ -265,7 +238,6 @@ elif menu == "🤖 AI 매대 시뮬레이터":
                                 dist_df.loc[z1, z2] = np.linalg.norm(centers[z1] - centers[z2]) if z1 != z2 else 1.0
                         return dist_df
 
-                    # 2. 현재 상태 학습
                     transition_counts = df_all.groupby(['zone', 'next_zone']).size().unstack(fill_value=0)
                     current_prob = transition_counts.div(transition_counts.sum(axis=1), axis=0).fillna(0)
                     current_traffic = df_all['zone'].value_counts()
@@ -273,27 +245,23 @@ elif menu == "🤖 AI 매대 시뮬레이터":
                     cur_centers = get_centers(ZONES)
                     cur_dist = calc_dist(cur_centers)
                     
-                    # Intent(의도) = 확률 * 거리제곱
                     common_zones = current_prob.index.intersection(cur_dist.index)
                     intent_matrix = current_prob.loc[common_zones, common_zones] * (cur_dist.loc[common_zones, common_zones] ** 2)
                     
-                    # 3. 매대 위치 Swap
                     new_zones = ZONES.copy()
                     new_zones[zone_A], new_zones[zone_B] = new_zones[zone_B], new_zones[zone_A]
                     
                     new_centers = get_centers(new_zones)
                     new_dist = calc_dist(new_centers)
                     
-                    # 4. 새로운 확률 및 예측 계산
                     new_prob = intent_matrix / (new_dist.loc[common_zones, common_zones] ** 2)
                     new_prob = new_prob.div(new_prob.sum(axis=1), axis=0).fillna(0)
                     
                     pred_traffic = current_traffic.copy()
-                    for _ in range(5): # 동선 5스텝 진행 예측
+                    for _ in range(5):
                         common_idx = pred_traffic.index.intersection(new_prob.index)
                         pred_traffic = pred_traffic[common_idx].dot(new_prob.loc[common_idx])
                     
-                    # 5. 결과 시각화
                     st.success("예측 완료!")
                     res_col1, res_col2 = st.columns(2)
                     
@@ -308,3 +276,52 @@ elif menu == "🤖 AI 매대 시뮬레이터":
                     res_col2.metric(f"[{zone_B}] 코너 예측 방문객", f"{new_b:,.0f}명", f"{delta_b:,.0f}명 ({(delta_b/old_b)*100:.1f}%)")
     else:
          st.error("데이터 파일이 필요합니다.")
+
+# ====================================================================
+# [메뉴 4] 센서(Sward) 위치 확인 (⭐ 새로 추가된 메뉴!)
+# ====================================================================
+elif menu == "📍 센서(Sward) 위치":
+    st.title("📍 매장 내 센서(Sward) 설치 위치")
+    st.markdown("현재 마트에 설치된 센서 장비들의 위치와 구역 정보를 지도 위에서 확인합니다.")
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        st.info("💡 **센서(Sward) 연동 데이터**\n\n`swards (1).csv` 파일의 x, y 좌표를 기반으로 매장 지도 위에 실시간으로 센서 위치를 매핑합니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.")
+    
+    with col2:
+        try:
+            # CSV 데이터 로드
+            sward_df = pd. pd.read_csv('swards (1).csv')
+            
+            # 고해상도 도화지 준비 (비율 자동 맞춤 적용)
+            fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
+            
+            # 배경 지도 깔기
+            img_path = 'map_image.jpg' 
+            if os.path.exists(img_path):
+                img = mpimg.imread(img_path)
+                # ⭐ 원본 사진 크기가 어찌되든 [0~663, 0~500] 도화지에 강제로 맞춥니다!
+                ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
+            else:
+                st.warning(f"지도 이미지('{img_path}')를 찾을 수 없습니다.")
+                ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
+            
+            # 빨간 점(센서) 찍기
+            ax.scatter(sward_df['x'], sward_df['y'], color='red', s=45, edgecolors='white', linewidth=1.5, zorder=2)
+            
+            # 점 옆에 센서 이름(description) 달아주기
+            for idx, row in sward_df.iterrows():
+                ax.annotate(str(row['description']), 
+                            (row['x'], row['y']), 
+                            xytext=(5, 5), textcoords='offset points', 
+                            fontsize=8, color='#1E3A8A', weight='bold', zorder=3)
+                
+            ax.axis('off')
+            st.pyplot(fig)
+            
+        except FileNotFoundError:
+            st.error("⚠️ 'swards (1).csv' 파일을 찾을 수 없습니다.")
+            st.info("이 기능이 작동하려면 깃허브(GitHub) 창고에 'swards (1).csv' 파일이 업로드되어 있어야 합니다!")
+        except Exception as e:
+            st.error(f"오류가 발생했습니다: {e}")
