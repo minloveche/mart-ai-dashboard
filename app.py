@@ -7,6 +7,7 @@ from scipy.ndimage import gaussian_filter
 import os
 import platform
 import re
+import glob
 import altair as alt
 
 # --- [1. 기본 설정 및 한글 폰트] ---
@@ -54,19 +55,45 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 및 헬퍼 함수] ---
+# --- [2. 데이터 로드 (⭐ 파일명 날짜 자동 추출기능 탑재)] ---
 @st.cache_data
 def load_all_sessions():
-    if os.path.exists("sessions_compressed.parquet"):
-        return pd.read_parquet("sessions_compressed.parquet")
-    return None
+    # Zone_Visit_Sessions 파일들을 모두 찾습니다.
+    files = glob.glob("Zone_Visit_Sessions_*.*") + glob.glob("sessions_compressed.*")
+    files = [f for f in files if f.endswith('.parquet') or f.endswith('.csv')]
+    if not files: return None
+    
+    dfs = []
+    for f in files:
+        try:
+            df = pd.read_parquet(f) if f.endswith('.parquet') else pd.read_csv(f)
+            # 파일명에서 '2025_10_1' 부분 추출하여 '2025-10-01' 형태로 고정!
+            match = re.search(r'(\d{4})_(\d{1,2})_(\d{1,2})', f)
+            if match:
+                y, m, d = match.groups()
+                df['date'] = f"{y}-{int(m):02d}-{int(d):02d}"
+            dfs.append(df)
+        except: pass
+    return pd.concat(dfs, ignore_index=True) if dfs else None
 
 @st.cache_data
 def load_trajectory():
-    for f in ["trajectory_compressed.parquet", "trajectory_super_light.parquet"]:
-        if os.path.exists(f):
-            return pd.read_parquet(f)
-    return None
+    # Real_Users_Trajectory 파일들을 모두 찾습니다.
+    files = glob.glob("Real_Users_Trajectory*.*") + glob.glob("trajectory_*.*")
+    files = [f for f in files if f.endswith('.parquet') or f.endswith('.csv')]
+    if not files: return None
+    
+    dfs = []
+    for f in files:
+        try:
+            df = pd.read_parquet(f) if f.endswith('.parquet') else pd.read_csv(f)
+            match = re.search(r'(\d{4})_(\d{1,2})_(\d{1,2})', f)
+            if match:
+                y, m, d = match.groups()
+                df['date'] = f"{y}-{int(m):02d}-{int(d):02d}"
+            dfs.append(df)
+        except: pass
+    return pd.concat(dfs, ignore_index=True) if dfs else None
 
 @st.cache_data
 def load_weather():
@@ -79,17 +106,15 @@ def load_weather():
                 date_str = str(row['Date']).strip()
                 weather = str(row['Weather']).strip()
                 holiday_flag = str(row['Holiday']).strip().lower()
-                
                 holiday = "🔴 휴일" if holiday_flag == 'yes' else "🟢 평일"
+                # 날씨 아이콘
                 weather_lower = weather.lower()
                 if "rain" in weather_lower: icon = "🌧️"
                 elif "cloud" in weather_lower: icon = "☁️"
                 elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
                 else: icon = "🌤️"
-                
                 weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday}]"
-        except Exception as e:
-            pass
+        except: pass
     return weather_dict
 
 df_all = load_all_sessions()
@@ -97,25 +122,13 @@ df_traj = load_trajectory()
 weather_info = load_weather()
 
 def format_date_option(d):
-    if d == "전체 누적 보기":
-        return d
-    nums = re.findall(r'\d+', str(d))
-    if nums:
-        day_num = int(nums[-1])
-        return weather_info.get(day_num, str(d))
-    return str(d)
-
-def safe_date_match(val, target):
+    if d == "전체 누적 보기": return d
+    # d는 이제 완벽한 '2025-10-01' 형태이므로, 끝의 숫자('01' -> 1)를 뽑아 날씨와 연결합니다.
     try:
-        v1_clean = str(val).split('.')[0]
-        v2_clean = str(target).split('.')[0]
-        v1_nums = re.findall(r'\d+', v1_clean)
-        v2_nums = re.findall(r'\d+', v2_clean)
-        v1_day = int(v1_nums[-1]) if v1_nums else str(v1_clean)
-        v2_day = int(v2_nums[-1]) if v2_nums else str(v2_clean)
-        return v1_day == v2_day
+        day_num = int(d.split('-')[-1])
+        return weather_info.get(day_num, d)
     except:
-        return str(val) == str(target)
+        return str(d)
 
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
@@ -140,19 +153,17 @@ if menu == "📊 트래픽 요약":
     """, unsafe_allow_html=True)
 
     if df_all is not None and 'date' in df_all.columns:
-        def sort_date(d):
-            nums = re.findall(r'\d+', str(d))
-            return int(nums[-1]) if nums else 0
-            
-        available_dates = sorted(df_all['date'].unique(), key=sort_date)
+        # 날짜가 2025-10-01, 2025-10-02 로 깔끔해졌으므로 문자열 정렬만 하면 됩니다.
+        available_dates = sorted(df_all['date'].unique().tolist())
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
             filtered_df = df_all
-            st.markdown(f"### 📈 전체 누적 트래픽")
+            st.markdown("### 📈 전체 누적 트래픽")
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
-            filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
+            # ⭐ 복잡한 필터 없이 깔끔하게 일치(==) 확인!
+            filtered_df = df_all[df_all['date'] == str(selected_date)]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
@@ -168,20 +179,17 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ [해결!] 누적 보기의 스파게티 현상을 방지합니다.
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
             
             try:
-                # 깃허브에 올린 초경량 파일 읽기
                 trend_df = pd.read_csv("time_trend_light.csv")
                 
                 if selected_date == "전체 누적 보기":
-                    # ⭐ [가장 중요한 코드] 전체 날짜의 동일한 시간대 인원수를 하나로 깔끔하게 합쳐줍니다(sum).
                     trend_df = trend_df.groupby('time_str')['visitors'].sum().reset_index()
                     y_axis_title = '총 누적 방문객 수 (명)'
                 else:
-                    # 선택한 특정 날짜만 필터링
-                    trend_df = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
+                    # 완벽히 통일된 형식으로 필터링
+                    trend_df = trend_df[trend_df['date'] == str(selected_date)]
                     y_axis_title = '동시 체류 방문객 수 (명)'
 
                 if not trend_df.empty:
@@ -202,13 +210,12 @@ if menu == "📊 트래픽 요약":
                 else:
                     st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
             except FileNotFoundError:
-                st.warning("⚠️ 'time_trend_light.csv' 파일이 깃허브에 없습니다! 이전 답변의 코드로 파일을 생성하여 업로드해주세요.")
+                st.warning("⚠️ 'time_trend_light.csv' 파일이 깃허브에 없습니다! 파일을 업로드해주세요.")
             except Exception as e:
                 st.error(f"그래프 생성 중 오류: {e}")
 
             st.markdown("---")
 
-            # 기존 구역별 방문 횟수
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             all_zones = filtered_df['zone'].value_counts()
             
@@ -232,7 +239,7 @@ if menu == "📊 트래픽 요약":
         else:
             st.info("데이터가 없습니다.")
     else:
-        st.error("데이터 파일에 날짜 정보가 없습니다. 데이터를 다시 압축해주세요.")
+        st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
 
 # ====================================================================
 # [메뉴 2] 정밀 히트맵
@@ -242,18 +249,14 @@ elif menu == "🔥 정밀 히트맵":
     st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
     
     if df_traj is not None and 'date' in df_traj.columns:
-        def sort_date(d):
-            nums = re.findall(r'\d+', str(d))
-            return int(nums[-1]) if nums else 0
-            
-        available_dates = sorted(df_traj['date'].unique(), key=sort_date)
+        available_dates = sorted(df_traj['date'].unique().tolist())
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
-            filtered_traj = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))]
+            filtered_traj = df_traj[df_traj['date'] == str(selected_date)]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
 
@@ -293,7 +296,7 @@ elif menu == "🔥 정밀 히트맵":
         else:
             st.info("선택한 날짜에 동선 데이터가 없습니다.")
     else:
-        st.error("데이터에 날짜 정보가 없거나 'trajectory_super_light.parquet' 파일이 없습니다.")
+        st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
 
 # ====================================================================
 # [메뉴 3] AI 매대 시뮬레이터 (마르코프 체인)
