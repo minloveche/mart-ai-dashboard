@@ -83,6 +83,29 @@ menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "
 # ====================================================================
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
+
+# ====================================================================
+# [메뉴 1] 트래픽 요약
+# ====================================================================
+if menu == "📊 트래픽 요약":
+    st.title("📊 마트 트래픽 요약")
+    
+    # 👇👇👇 [여기에 아래 코드를 복사해서 붙여넣으세요!] 👇👇👇
+    
+    st.markdown("""
+    <div style="border: 3px dashed #CBD5E1; padding: 60px; text-align: center; border-radius: 15px; background-color: #F8FAFC; margin-bottom: 30px;">
+        <h3 style="color: #334155; margin-bottom: 10px;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h3>
+        <p style="color: #64748B; font-size: 16px;">
+            🚧 현재 개발 중인 기능입니다.<br>
+            향후 CCTV 및 센서 데이터와 연동되어, 현재 매장 내 고객의 이동이 <b>실시간 점(Dot)</b>으로 표시될 공간입니다.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 👆👆👆 [여기까지 복사] 👆👆👆
+    
+    if df_all is not None and 'date' in df_all.columns:
+        # ...(이하 기존 코드 동일)...
     
     if df_all is not None and 'date' in df_all.columns:
         import re
