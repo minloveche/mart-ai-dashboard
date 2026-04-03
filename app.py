@@ -55,7 +55,7 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 및 지능형 날짜 매칭] ---
+# --- [2. 데이터 로드 및 헬퍼 함수] ---
 @st.cache_data
 def load_all_sessions():
     files = glob.glob("Zone_Visit_Sessions*.*") + glob.glob("sessions_compressed.*")
@@ -115,7 +115,13 @@ df_all = load_all_sessions()
 df_traj = load_trajectory()
 weather_info = load_weather()
 
+# ⭐ [업그레이드] 어떤 날짜 형식이든 완벽하게 짝을 맞춥니다.
 def safe_date_match(val, target):
+    # 만약 둘 다 2025-10-01 처럼 완벽한 날짜라면 글자 그대로 정확하게 비교! (월 넘어감 방지)
+    if '-' in str(val) and '-' in str(target):
+        return str(val).strip() == str(target).strip()
+
+    # 옛날 데이터(1, 1.0)를 위한 안전장치
     def get_day_num(x):
         nums = re.findall(r'\d+', str(x).split('.')[0])
         return int(nums[-1]) if nums else None
@@ -125,6 +131,16 @@ def safe_date_match(val, target):
     if v1 is not None and v2 is not None:
         return v1 == v2
     return str(val).strip() == str(target).strip()
+
+# ⭐ [핵심!] 1, 10, 2가 아니라 1, 2, ..., 10 순서대로 완벽 정렬해 주는 함수
+def sort_date_smart(d):
+    nums = re.findall(r'\d+', str(d))
+    if not nums: return 99999999
+    # 2025-10-01 이면 20251001 로 바꿔서 완벽하게 달력 정렬
+    if len(nums) >= 3:
+        return int(f"{nums[0]}{int(nums[1]):02d}{int(nums[2]):02d}")
+    # 그냥 1, 2 이면 숫자 크기대로 정렬
+    return int(nums[-1])
 
 def format_date_option(d):
     if d == "전체 누적 보기": return d
@@ -152,8 +168,8 @@ if menu == "📊 트래픽 요약":
     """, unsafe_allow_html=True)
 
     if df_all is not None and 'date' in df_all.columns:
-        # ⭐ [버그 해결!] 어설픈 숫자 추출기 제거! 기본 정렬(알파벳순)만으로 완벽하게 달력 순서가 됩니다.
-        available_dates = sorted(df_all['date'].unique().tolist())
+        # ⭐ 여기에 무적 정렬 함수(sort_date_smart)를 적용했습니다!
+        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
@@ -239,8 +255,8 @@ elif menu == "🔥 정밀 히트맵":
     st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
     
     if df_traj is not None and 'date' in df_traj.columns:
-        # ⭐ 히트맵 메뉴에도 마찬가지로 기본 정렬 적용!
-        available_dates = sorted(df_traj['date'].unique().tolist())
+        # ⭐ 히트맵 메뉴에도 무적 정렬 적용!
+        available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
