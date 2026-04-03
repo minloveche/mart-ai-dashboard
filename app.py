@@ -54,7 +54,7 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 함수] ---
+# --- [2. 데이터 로드 및 헬퍼 함수] ---
 @st.cache_data
 def load_all_sessions():
     if os.path.exists("sessions_compressed.parquet"):
@@ -104,6 +104,12 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     return str(d)
 
+# ⭐ [추가됨] '1'과 '1.0'을 똑같은 날짜로 취급하게 해주는 강력한 필터 함수
+def safe_date_match(val, target):
+    v1 = str(val).split('.')[0].strip()
+    v2 = str(target).split('.')[0].strip()
+    return v1 == v2
+
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
@@ -139,7 +145,8 @@ if menu == "📊 트래픽 요약":
             st.markdown(f"### 📈 전체 누적 트래픽")
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
-            filtered_df = df_all[df_all['date'].astype(str) == str(selected_date)]
+            # 안전한 날짜 필터 적용
+            filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
@@ -155,26 +162,25 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ [여기!] 성공하셨던 Matplotlib 파이썬 코드를 웹사이트용으로 이식했습니다.
+            # ⭐ 시간에 따른 푸른색 선 그래프 
             if df_traj is not None and 'time_index' in df_traj.columns:
                 st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
                 try:
                     if selected_date == "전체 누적 보기":
                         t_df = df_traj.copy()
                     else:
-                        t_df = df_traj[df_traj['date'].astype(str) == str(selected_date)].copy()
+                        # 강력한 짝맞춤 필터 적용! 이제 1.0 때문에 데이터가 증발하지 않습니다.
+                        t_df = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))].copy()
 
                     if not t_df.empty:
-                        # 1. 10분 단위 시간 계산 (안전장치 포함)
                         t_df['time_index_num'] = pd.to_numeric(t_df['time_index'], errors='coerce').fillna(0)
-                        t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400 # 24시간 제한
+                        t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400
                         t_df['time_bin_10m'] = t_df['total_seconds'] // 600
 
                         t_df['hour'] = (t_df['time_bin_10m'] * 10) // 60 % 24
                         t_df['minute'] = (t_df['time_bin_10m'] * 10) % 60
                         t_df['time_float'] = t_df['hour'] + (t_df['minute'] / 60.0)
 
-                        # 2. 트래픽 계산
                         if 'real_user_id' in t_df.columns:
                             trend_data = t_df.groupby('time_float')['real_user_id'].nunique().reset_index()
                             y_label = '방문객 수 (명)'
@@ -184,32 +190,23 @@ if menu == "📊 트래픽 요약":
 
                         trend_data = trend_data.sort_values('time_float')
 
-                        # 3. Matplotlib 그래프 그리기 (푸른색 테마 적용)
                         fig, ax = plt.subplots(figsize=(14, 5), dpi=150)
 
-                        # 선 그리기 (파란색)
                         ax.plot(trend_data['time_float'], trend_data.iloc[:, 1], 
                                 color='#2563EB', linewidth=3, marker='o', markersize=4, label='트래픽 흐름')
 
-                        # 선 아래쪽을 투명한 파란색으로 채우기
                         ax.fill_between(trend_data['time_float'], trend_data.iloc[:, 1], color='#60A5FA', alpha=0.2)
 
-                        # 디자인 꾸미기
                         ax.set_xlabel('시간 (0시 ~ 23시)', fontsize=11, fontweight='bold')
                         ax.set_ylabel(y_label, fontsize=11, fontweight='bold')
 
-                        # X축 눈금을 1시간 단위로 표시
                         ax.set_xticks(np.arange(0, 24, 1))
                         ax.set_xticklabels([f"{int(x)}시" for x in np.arange(0, 24, 1)])
 
-                        # 가로 눈금선(점선) 추가
                         ax.grid(axis='y', linestyle='--', alpha=0.4)
-
-                        # 위쪽, 오른쪽 테두리 없애서 깔끔한 대시보드 스타일로 만들기
                         ax.spines['top'].set_visible(False)
                         ax.spines['right'].set_visible(False)
 
-                        # 가장 붐볐던 최고점(Peak)에 글자 표시해주기
                         if not trend_data.empty and len(trend_data) > 0:
                             max_idx = trend_data.iloc[:, 1].idxmax()
                             peak_time = trend_data.loc[max_idx, 'time_float']
@@ -222,8 +219,7 @@ if menu == "📊 트래픽 요약":
                                         ha='center', fontsize=12, fontweight='bold', color='#D32F2F',
                                         arrowprops=dict(arrowstyle='->', color='#D32F2F', lw=1.5))
 
-                        # ⭐ 웹사이트에 그래프 띄우기!
-                        st.pyplot(fig)
+                        st.pyplot(fig, clear_figure=True)
 
                     else:
                         st.info("💡 선택하신 날짜에는 시간대별 동선(Trajectory) 데이터가 없습니다.")
@@ -232,7 +228,6 @@ if menu == "📊 트래픽 요약":
             
             st.markdown("---")
 
-            # 기존 구역별 방문 횟수
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             all_zones = filtered_df['zone'].value_counts()
             
@@ -277,7 +272,8 @@ elif menu == "🔥 정밀 히트맵":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
-            filtered_traj = df_traj[df_traj['date'].astype(str) == str(selected_date)]
+            # 여기도 1.0 버그를 막아주는 필터 장착!
+            filtered_traj = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
 
