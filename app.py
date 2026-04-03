@@ -21,61 +21,60 @@ else:
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# ⭐ [디자인 업그레이드!] 몰래 주입하는 CSS 마법
+# ⭐ [디자인 업그레이드!] 모든 상자(Container)를 둥근 고급 카드로 만드는 마법
 custom_css = """
 <style>
-    /* 1. 전체 배경을 세련된 밝은 회색(쿨톤)으로 변경 */
+    /* 1. 전체 배경을 세련된 쿨톤 그레이로 */
     .stApp {
         background-color: #F8FAFC;
     }
     
-    /* 2. 사이드바를 전문적인 다크 네이비로 변경 */
+    /* 2. 사이드바는 다크 네이비 */
     [data-testid="stSidebar"] {
         background-color: #1E293B !important;
     }
-    /* 사이드바 글씨를 모두 흰색으로 */
     [data-testid="stSidebar"] * {
         color: #F1F5F9 !important;
     }
     
-    /* 3. 대시보드 제목 스타일링 */
+    /* 3. 제목 폰트 스타일링 */
     h1, h2, h3 {
         color: #0F172A;
         font-weight: 800 !important;
         letter-spacing: -0.5px;
     }
     
-    /* 4. 핵심 데이터 숫자(Metric)를 '카드' 형태로 예쁘게 만들기 */
+    /* 4. 수치 표시(Metric) 카드 */
     [data-testid="stMetric"] {
         background-color: #FFFFFF;
         padding: 20px;
         border-radius: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         border: 1px solid #E2E8F0;
         text-align: center;
         transition: transform 0.2s;
     }
     [data-testid="stMetric"]:hover {
-        transform: translateY(-5px); /* 마우스 올리면 살짝 위로 뜹니다! */
+        transform: translateY(-5px);
     }
-    /* 숫자 위에 적힌 작은 글씨 */
     [data-testid="stMetricLabel"] {
         font-size: 15px;
         color: #64748B;
         font-weight: 600;
-        margin-bottom: 5px;
     }
-    /* 진짜 큰 숫자 */
     [data-testid="stMetricValue"] {
         font-size: 36px;
-        color: #2563EB; /* 블루 포인트 컬러 */
+        color: #2563EB;
         font-weight: 900;
     }
     
-    /* 5. 입력창(셀렉트박스 등) 둥근 모서리 */
-    .stSelectbox > div[data-baseweb="select"] > div {
-        border-radius: 10px;
-        border: 1px solid #CBD5E1;
+    /* ⭐ 5. 컨트롤러 상자들을 세련된 카드로 만들기 (테두리 있는 컨테이너 대상) */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #FFFFFF !important;
+        border-radius: 15px !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid #E2E8F0 !important;
+        padding: 15px !important;
     }
 </style>
 """
@@ -213,7 +212,6 @@ menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
     
-    # 상단 알림 배너 스타일링
     st.markdown("""
     <div style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 30px; border-radius: 15px; border-left: 5px solid #3B82F6; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <h4 style="color: #1E3A8A; margin-top: 0;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h4>
@@ -239,7 +237,6 @@ if menu == "📊 트래픽 요약":
             total_users = filtered_df['real_user_id'].nunique()
             
         if not filtered_df.empty:
-            # ⭐ CSS가 적용되어 세련된 카드로 나타납니다!
             col1, col2, col3 = st.columns(3)
             total_stays = filtered_df['stay_sec'].sum() / 3600
             top_zone = filtered_df['zone'].value_counts().index[0]
@@ -265,13 +262,13 @@ if menu == "📊 트래픽 요약":
                     plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
                     
                     chart = alt.Chart(plot_data).mark_area(
-                        interpolate='monotone', color='#93C5FD', opacity=0.4 # 색상을 더 부드럽게 변경
+                        interpolate='monotone', color='#93C5FD', opacity=0.4
                     ).encode(
                         x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
                         y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(labelColor='#475569')),
                         tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
                     ) + alt.Chart(plot_data).mark_line(
-                        interpolate='monotone', color='#3B82F6', strokeWidth=3 # 메인 라인은 선명하게
+                        interpolate='monotone', color='#3B82F6', strokeWidth=3
                     ).encode(
                         x=alt.X('시간:T'),
                         y=alt.Y('visitors:Q')
@@ -325,10 +322,13 @@ elif menu == "🔥 정밀 히트맵":
 
         if not filtered_traj.empty:
             col1, col2 = st.columns([1, 3])
+            
             with col1:
-                st.markdown("#### 히트맵 컨트롤러")
-                blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
-                red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
+                # ⭐ [핵심!] 컨트롤러를 예쁜 하얀색 상자(Card) 안에 쏙 집어넣었습니다!
+                with st.container(border=True):
+                    st.markdown("<h4 style='color: #1E293B; margin-top:0; font-size:18px;'>🎛️ 히트맵 컨트롤러</h4>", unsafe_allow_html=True)
+                    blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
+                    red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
                 
             with col2:
                 fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
@@ -371,70 +371,67 @@ elif menu == "🤖 AI 매대 시뮬레이터":
     if df_all is not None:
         zones_list = list(ZONES.keys())
         
-        # 둥근 카드로 감싸기
-        st.markdown("""
-        <div style="background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-        """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            zone_A = st.selectbox("위치를 바꿀 매대 1", zones_list, index=zones_list.index('과자'))
-        with col2:
-            zone_B = st.selectbox("위치를 바꿀 매대 2", zones_list, index=zones_list.index('라면'))
-            
-        if st.button("🚀 시뮬레이션 시작", use_container_width=True):
-            if zone_A == zone_B:
-                st.warning("서로 다른 두 매대를 선택해 주세요.")
-            else:
-                with st.spinner("AI가 고객 이동 의도(Intent)를 계산 중입니다..."):
-                    def get_centers(z_dict):
-                        return {z: np.array([(c['x_min']+c['x_max'])/2, (c['y_min']+c['y_max'])/2]) for z, c in z_dict.items()}
-                    
-                    def calc_dist(centers):
-                        z_names = list(centers.keys())
-                        dist_df = pd.DataFrame(np.zeros((len(z_names), len(z_names))), index=z_names, columns=z_names)
-                        for z1 in z_names:
-                            for z2 in z_names:
-                                dist_df.loc[z1, z2] = np.linalg.norm(centers[z1] - centers[z2]) if z1 != z2 else 1.0
-                        return dist_df
+        # ⭐ 여기도 공식 상자(Card) 기능으로 깔끔하게 정리했습니다!
+        with st.container(border=True):
+            st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔄 매대 위치 스왑 설정</h4>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                zone_A = st.selectbox("위치를 바꿀 매대 1", zones_list, index=zones_list.index('과자'))
+            with col2:
+                zone_B = st.selectbox("위치를 바꿀 매대 2", zones_list, index=zones_list.index('라면'))
+                
+            if st.button("🚀 시뮬레이션 시작", use_container_width=True):
+                if zone_A == zone_B:
+                    st.warning("서로 다른 두 매대를 선택해 주세요.")
+                else:
+                    with st.spinner("AI가 고객 이동 의도(Intent)를 계산 중입니다..."):
+                        def get_centers(z_dict):
+                            return {z: np.array([(c['x_min']+c['x_max'])/2, (c['y_min']+c['y_max'])/2]) for z, c in z_dict.items()}
+                        
+                        def calc_dist(centers):
+                            z_names = list(centers.keys())
+                            dist_df = pd.DataFrame(np.zeros((len(z_names), len(z_names))), index=z_names, columns=z_names)
+                            for z1 in z_names:
+                                for z2 in z_names:
+                                    dist_df.loc[z1, z2] = np.linalg.norm(centers[z1] - centers[z2]) if z1 != z2 else 1.0
+                            return dist_df
 
-                    transition_counts = df_all.groupby(['zone', 'next_zone']).size().unstack(fill_value=0)
-                    current_prob = transition_counts.div(transition_counts.sum(axis=1), axis=0).fillna(0)
-                    current_traffic = df_all['zone'].value_counts()
-                    
-                    cur_centers = get_centers(ZONES)
-                    cur_dist = calc_dist(cur_centers)
-                    
-                    common_zones = current_prob.index.intersection(cur_dist.index)
-                    intent_matrix = current_prob.loc[common_zones, common_zones] * (cur_dist.loc[common_zones, common_zones] ** 2)
-                    
-                    new_zones = ZONES.copy()
-                    new_zones[zone_A], new_zones[zone_B] = new_zones[zone_B], new_zones[zone_A]
-                    
-                    new_centers = get_centers(new_zones)
-                    new_dist = calc_dist(new_centers)
-                    
-                    new_prob = intent_matrix / (new_dist.loc[common_zones, common_zones] ** 2)
-                    new_prob = new_prob.div(new_prob.sum(axis=1), axis=0).fillna(0)
-                    
-                    pred_traffic = current_traffic.copy()
-                    for _ in range(5):
-                        common_idx = pred_traffic.index.intersection(new_prob.index)
-                        pred_traffic = pred_traffic[common_idx].dot(new_prob.loc[common_idx])
-                    
-                    st.success("예측 완료!")
-                    res_col1, res_col2 = st.columns(2)
-                    
-                    old_a = current_traffic.get(zone_A, 0)
-                    new_a = pred_traffic.get(zone_A, 0)
-                    delta_a = new_a - old_a
-                    res_col1.metric(f"[{zone_A}] 코너 예측 방문객", f"{new_a:,.0f}명", f"{delta_a:,.0f}명 ({(delta_a/old_a)*100:.1f}%)")
-                    
-                    old_b = current_traffic.get(zone_B, 0)
-                    new_b = pred_traffic.get(zone_B, 0)
-                    delta_b = new_b - old_b
-                    res_col2.metric(f"[{zone_B}] 코너 예측 방문객", f"{new_b:,.0f}명", f"{delta_b:,.0f}명 ({(delta_b/old_b)*100:.1f}%)")
-        st.markdown("</div>", unsafe_allow_html=True)
+                        transition_counts = df_all.groupby(['zone', 'next_zone']).size().unstack(fill_value=0)
+                        current_prob = transition_counts.div(transition_counts.sum(axis=1), axis=0).fillna(0)
+                        current_traffic = df_all['zone'].value_counts()
+                        
+                        cur_centers = get_centers(ZONES)
+                        cur_dist = calc_dist(cur_centers)
+                        
+                        common_zones = current_prob.index.intersection(cur_dist.index)
+                        intent_matrix = current_prob.loc[common_zones, common_zones] * (cur_dist.loc[common_zones, common_zones] ** 2)
+                        
+                        new_zones = ZONES.copy()
+                        new_zones[zone_A], new_zones[zone_B] = new_zones[zone_B], new_zones[zone_A]
+                        
+                        new_centers = get_centers(new_zones)
+                        new_dist = calc_dist(new_centers)
+                        
+                        new_prob = intent_matrix / (new_dist.loc[common_zones, common_zones] ** 2)
+                        new_prob = new_prob.div(new_prob.sum(axis=1), axis=0).fillna(0)
+                        
+                        pred_traffic = current_traffic.copy()
+                        for _ in range(5):
+                            common_idx = pred_traffic.index.intersection(new_prob.index)
+                            pred_traffic = pred_traffic[common_idx].dot(new_prob.loc[common_idx])
+                        
+                        st.success("예측 완료!")
+                        res_col1, res_col2 = st.columns(2)
+                        
+                        old_a = current_traffic.get(zone_A, 0)
+                        new_a = pred_traffic.get(zone_A, 0)
+                        delta_a = new_a - old_a
+                        res_col1.metric(f"[{zone_A}] 코너 예측 방문객", f"{new_a:,.0f}명", f"{delta_a:,.0f}명 ({(delta_a/old_a)*100:.1f}%)")
+                        
+                        old_b = current_traffic.get(zone_B, 0)
+                        new_b = pred_traffic.get(zone_B, 0)
+                        delta_b = new_b - old_b
+                        res_col2.metric(f"[{zone_B}] 코너 예측 방문객", f"{new_b:,.0f}명", f"{delta_b:,.0f}명 ({(delta_b/old_b)*100:.1f}%)")
     else:
          st.error("데이터 파일이 필요합니다.")
 
@@ -448,12 +445,10 @@ elif menu == "📍 센서(Sward) 위치":
     col1, col2 = st.columns([1, 3])
     
     with col1:
-        st.markdown("""
-        <div style="background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border-left: 5px solid #10B981;">
-            <p style="color: #047857; font-weight: bold; margin-bottom: 5px;">💡 센서(Sward) 연동 데이터</p>
-            <p style="color: #475569; font-size: 14px;"><code>swards (1).csv</code> 파일의 좌표를 기반으로 매장 지도 위에 실시간 매핑됩니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        # ⭐ 여기도 예쁜 카드로 통일!
+        with st.container(border=True):
+            st.markdown("<h4 style='color: #047857; margin-top:0;'>💡 센서 연동 데이터</h4>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #475569; font-size: 14px; margin-bottom:0;'><code>swards (1).csv</code> 파일의 좌표를 기반으로 매장 지도 위에 실시간 매핑됩니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.</p>", unsafe_allow_html=True)
     
     with col2:
         try:
