@@ -133,11 +133,6 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     except: return str(d)
 
-# ⭐ [핵심 추가!] 숫자를 뽑아내서 크기순으로 깔끔하게 줄 세우는 함수
-def sort_date_numerically(d):
-    nums = re.findall(r'\d+', str(d).split('.')[0])
-    return int(nums[-1]) if nums else 0
-
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
@@ -157,8 +152,8 @@ if menu == "📊 트래픽 요약":
     """, unsafe_allow_html=True)
 
     if df_all is not None and 'date' in df_all.columns:
-        # ⭐ 여기에 숫자 정렬(key=sort_date_numerically)을 적용했습니다!
-        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_numerically)
+        # ⭐ [버그 해결!] 어설픈 숫자 추출기 제거! 기본 정렬(알파벳순)만으로 완벽하게 달력 순서가 됩니다.
+        available_dates = sorted(df_all['date'].unique().tolist())
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
@@ -244,8 +239,8 @@ elif menu == "🔥 정밀 히트맵":
     st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
     
     if df_traj is not None and 'date' in df_traj.columns:
-        # ⭐ 히트맵 메뉴에도 똑같이 숫자 정렬을 적용했습니다!
-        available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_numerically)
+        # ⭐ 히트맵 메뉴에도 마찬가지로 기본 정렬 적용!
+        available_dates = sorted(df_traj['date'].unique().tolist())
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
