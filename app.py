@@ -55,7 +55,7 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 함수 (캐싱 적용)] ---
+# --- [2. 데이터 로드 함수] ---
 @st.cache_data
 def load_all_sessions():
     if os.path.exists("sessions_compressed.parquet"):
@@ -68,8 +68,41 @@ def load_trajectory():
         return pd.read_parquet("trajectory_super_light.parquet")
     return None
 
+# ⭐ 새롭게 추가된 날씨 데이터 로드 함수!
+@st.cache_data
+def load_weather():
+    weather_dict = {}
+    if os.path.exists("Day_Weather_Enhanced.csv"):
+        try:
+            df_w = pd.read_csv("Day_Weather_Enhanced.csv")
+            for _, row in df_w.iterrows():
+                date_str = str(row['Date']).strip()
+                weather = str(row['Weather']).strip()
+                holiday_flag = str(row['Holiday']).strip().lower()
+                
+                # 평일/휴일 및 날씨 이모지 변환
+                holiday = "🔴 휴일" if holiday_flag == 'yes' else "🟢 평일"
+                weather_lower = weather.lower()
+                if "rain" in weather_lower: icon = "🌧️"
+                elif "cloud" in weather_lower: icon = "☁️"
+                elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
+                else: icon = "🌤️"
+                
+                # "2025-10-01 [🌧️ Rainy | 🟢 평일]" 형태의 예쁜 이름표 완성
+                weather_dict[date_str] = f"{date_str} [{icon} {weather} | {holiday}]"
+        except Exception as e:
+            pass
+    return weather_dict
+
 df_all = load_all_sessions()
 df_traj = load_trajectory()
+weather_info = load_weather() # 날씨 정보를 가져옵니다.
+
+# ⭐ 드롭다운 메뉴의 글자만 바꿔주는 마법의 함수
+def format_date_option(d):
+    if d == "전체 누적 보기":
+        return d
+    return weather_info.get(str(d), str(d))
 
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
@@ -99,7 +132,9 @@ if menu == "📊 트래픽 요약":
             return int(nums[-1]) if nums else 0
             
         available_dates = sorted(df_all['date'].unique(), key=sort_date)
-        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates)
+        
+        # ⭐ 여기에 format_func를 추가하여 화면에 날씨가 보이게 합니다.
+        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
             filtered_df = df_all
@@ -107,7 +142,9 @@ if menu == "📊 트래픽 요약":
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
             filtered_df = df_all[df_all['date'] == selected_date]
-            st.markdown(f"### 📈 {selected_date} 일자 트래픽")
+            # ⭐ 제목에도 날씨와 휴일 정보가 뜨도록 합니다.
+            display_title = weather_info.get(str(selected_date), str(selected_date))
+            st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
             
         if not filtered_df.empty:
@@ -158,14 +195,18 @@ elif menu == "🔥 정밀 히트맵":
             return int(nums[-1]) if nums else 0
             
         available_dates = sorted(df_traj['date'].unique(), key=sort_date)
-        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date")
+        
+        # ⭐ 히트맵 메뉴의 드롭다운에도 날씨 포맷을 적용합니다.
+        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
         
         if selected_date == "전체 누적 보기":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
             filtered_traj = df_traj[df_traj['date'] == selected_date]
-            st.markdown(f"### 📈 {selected_date} 일자 동선 히트맵")
+            # ⭐ 제목에도 날씨 적용
+            display_title = weather_info.get(str(selected_date), str(selected_date))
+            st.markdown(f"### 📈 {display_title} 동선 히트맵")
 
         if not filtered_traj.empty:
             col1, col2 = st.columns([1, 3])
@@ -277,7 +318,7 @@ elif menu == "🤖 AI 매대 시뮬레이터":
          st.error("데이터 파일이 필요합니다.")
 
 # ====================================================================
-# [메뉴 4] 센서(Sward) 위치 확인 (⭐ 오류 완벽 해결!)
+# [메뉴 4] 센서(Sward) 위치 확인
 # ====================================================================
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
@@ -290,11 +331,8 @@ elif menu == "📍 센서(Sward) 위치":
     
     with col2:
         try:
-            # ⭐ 오타가 있던 부분 수정 완료 (pd.read_csv)
             sward_df = pd.read_csv('swards (1).csv')
-            
             fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
-            
             img_path = 'map_image.jpg' 
             if os.path.exists(img_path):
                 img = mpimg.imread(img_path)
