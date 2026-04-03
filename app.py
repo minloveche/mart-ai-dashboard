@@ -61,10 +61,12 @@ def load_all_sessions():
         return pd.read_parquet("sessions_compressed.parquet")
     return None
 
+# ⭐ 파일 이름을 두 개 다 확인하도록 업그레이드!
 @st.cache_data
 def load_trajectory():
-    if os.path.exists("trajectory_super_light.parquet"):
-        return pd.read_parquet("trajectory_super_light.parquet")
+    for f in ["trajectory_compressed.parquet", "trajectory_super_light.parquet"]:
+        if os.path.exists(f):
+            return pd.read_parquet(f)
     return None
 
 @st.cache_data
@@ -88,7 +90,7 @@ def load_weather():
                 
                 weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday}]"
         except Exception as e:
-            st.error(f"⚠️ 날씨 데이터를 읽는 중 오류 발생: {e}")
+            pass
     return weather_dict
 
 df_all = load_all_sessions()
@@ -104,7 +106,6 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     return str(d)
 
-# ⭐ [추가됨] '1'과 '1.0'을 똑같은 날짜로 취급하게 해주는 강력한 필터 함수
 def safe_date_match(val, target):
     v1 = str(val).split('.')[0].strip()
     v2 = str(target).split('.')[0].strip()
@@ -145,7 +146,6 @@ if menu == "📊 트래픽 요약":
             st.markdown(f"### 📈 전체 누적 트래픽")
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
-            # 안전한 날짜 필터 적용
             filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
@@ -162,69 +162,52 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ 시간에 따른 푸른색 선 그래프 
-            if df_traj is not None and 'time_index' in df_traj.columns:
-                st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
+            # ⭐ [완전 교체] 절대 튕기지 않는 Streamlit 내장 푸른색 Area 그래프
+            st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
+            
+            if df_traj is None:
+                st.warning("⚠️ 깃허브에 동선 파일(trajectory_compressed.parquet 또는 trajectory_super_light.parquet)이 없습니다!")
+            elif 'time_index' not in df_traj.columns:
+                st.warning(f"⚠️ 데이터 안에 'time_index' 기둥이 없습니다! 현재 발견된 기둥: {df_traj.columns.tolist()}")
+            else:
                 try:
                     if selected_date == "전체 누적 보기":
                         t_df = df_traj.copy()
                     else:
-                        # 강력한 짝맞춤 필터 적용! 이제 1.0 때문에 데이터가 증발하지 않습니다.
-                        t_df = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))].copy()
+                        if 'date' in df_traj.columns:
+                            t_df = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))].copy()
+                        else:
+                            # 동선 데이터에 아예 date가 없으면 전체 데이터를 씁니다!
+                            t_df = df_traj.copy()
+                            st.info("💡 동선 데이터에 '날짜' 정보가 분리되어 있지 않아 전체 트래픽 기준으로 보여집니다.")
 
-                    if not t_df.empty:
+                    if t_df.empty:
+                        st.info("💡 선택하신 날짜의 10분 단위 트래픽 데이터가 없습니다.")
+                    else:
+                        # 10분 단위로 세밀하게 쪼개기
                         t_df['time_index_num'] = pd.to_numeric(t_df['time_index'], errors='coerce').fillna(0)
                         t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400
                         t_df['time_bin_10m'] = t_df['total_seconds'] // 600
-
+                        
                         t_df['hour'] = (t_df['time_bin_10m'] * 10) // 60 % 24
                         t_df['minute'] = (t_df['time_bin_10m'] * 10) % 60
-                        t_df['time_float'] = t_df['hour'] + (t_df['minute'] / 60.0)
-
+                        # 14:30 같은 예쁜 시간 글자로 만들기
+                        t_df['시간대'] = t_df['hour'].astype(int).astype(str).str.zfill(2) + ":" + t_df['minute'].astype(int).astype(str).str.zfill(2)
+                        
+                        # 방문객 수 계산
                         if 'real_user_id' in t_df.columns:
-                            trend_data = t_df.groupby('time_float')['real_user_id'].nunique().reset_index()
-                            y_label = '방문객 수 (명)'
+                            trend = t_df.groupby('시간대')['real_user_id'].nunique().reset_index()
                         else:
-                            trend_data = t_df.groupby('time_float').size().reset_index(name='real_user_id')
-                            y_label = '활동량 (발자국 수)'
-
-                        trend_data = trend_data.sort_values('time_float')
-
-                        fig, ax = plt.subplots(figsize=(14, 5), dpi=150)
-
-                        ax.plot(trend_data['time_float'], trend_data.iloc[:, 1], 
-                                color='#2563EB', linewidth=3, marker='o', markersize=4, label='트래픽 흐름')
-
-                        ax.fill_between(trend_data['time_float'], trend_data.iloc[:, 1], color='#60A5FA', alpha=0.2)
-
-                        ax.set_xlabel('시간 (0시 ~ 23시)', fontsize=11, fontweight='bold')
-                        ax.set_ylabel(y_label, fontsize=11, fontweight='bold')
-
-                        ax.set_xticks(np.arange(0, 24, 1))
-                        ax.set_xticklabels([f"{int(x)}시" for x in np.arange(0, 24, 1)])
-
-                        ax.grid(axis='y', linestyle='--', alpha=0.4)
-                        ax.spines['top'].set_visible(False)
-                        ax.spines['right'].set_visible(False)
-
-                        if not trend_data.empty and len(trend_data) > 0:
-                            max_idx = trend_data.iloc[:, 1].idxmax()
-                            peak_time = trend_data.loc[max_idx, 'time_float']
-                            peak_val = trend_data.loc[max_idx].iloc[1]
-
-                            p_hour = int(peak_time)
-                            p_min = int(round((peak_time - p_hour) * 60))
-                            ax.annotate(f'🔥 최고점: {p_hour}시 {p_min}분 ({int(peak_val):,}명)', 
-                                        xy=(peak_time, peak_val), xytext=(peak_time, peak_val + (peak_val*0.08)),
-                                        ha='center', fontsize=12, fontweight='bold', color='#D32F2F',
-                                        arrowprops=dict(arrowstyle='->', color='#D32F2F', lw=1.5))
-
-                        st.pyplot(fig, clear_figure=True)
-
-                    else:
-                        st.info("💡 선택하신 날짜에는 시간대별 동선(Trajectory) 데이터가 없습니다.")
+                            trend = t_df.groupby('시간대').size().reset_index(name='real_user_id')
+                        
+                        trend = trend.rename(columns={'real_user_id': '방문객 수'}).set_index('시간대')
+                        trend = trend.sort_index()
+                        
+                        # ⭐ Streamlit의 가장 강력하고 예쁜 푸른색 내장 그래프 소환!
+                        st.area_chart(trend, color="#3B82F6", use_container_width=True)
+                        
                 except Exception as e:
-                    st.warning(f"그래프 렌더링 오류: {e}")
+                    st.error(f"⚠️ 그래프 그리기 중 알 수 없는 에러가 발생했습니다: {e}")
             
             st.markdown("---")
 
@@ -272,7 +255,6 @@ elif menu == "🔥 정밀 히트맵":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
-            # 여기도 1.0 버그를 막아주는 필터 장착!
             filtered_traj = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
