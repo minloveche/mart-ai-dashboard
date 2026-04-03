@@ -171,37 +171,67 @@ elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
     st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
     
-    if df_traj is not None:
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.markdown("#### 히트맵 컨트롤러")
-            blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
-            red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
+    # 1. 날짜 데이터가 있는지 확인
+    if df_traj is not None and 'date' in df_traj.columns:
+        import re
+        
+        def sort_date(d):
+            nums = re.findall(r'\d+', str(d))
+            return int(nums[-1]) if nums else 0
             
-        with col2:
-            fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
-            img_path = 'map_image.jpg'
-            if os.path.exists(img_path):
-                img = mpimg.imread(img_path)
-                ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
-            else:
-                ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
+        available_dates = sorted(df_traj['date'].unique(), key=sort_date)
+        
+        # ⭐ 날짜 선택기 (에러 방지를 위해 key="heatmap_date" 추가)
+        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date")
+        
+        # 2. 선택한 날짜에 맞게 데이터 걸러내기
+        if selected_date == "전체 누적 보기":
+            filtered_traj = df_traj
+            st.markdown("### 📈 전체 누적 동선 히트맵")
+        else:
+            filtered_traj = df_traj[df_traj['date'] == selected_date]
+            st.markdown(f"### 📈 {selected_date} 일자 동선 히트맵")
 
-            df_exact = df_traj[(df_traj['x'] >= 0) & (df_traj['x'] <= 663) & (df_traj['y'] >= 0) & (df_traj['y'] <= 500)]
-            heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
-            heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
-            
-            max_val = np.max(heatmap_smoothed)
-            red_threshold = max_val * (red_sens / 100.0)
-            vmin_level = max_val * 0.01
+        # 3. 걸러진 데이터(filtered_traj)로 히트맵 그리기
+        if not filtered_traj.empty:
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                st.markdown("#### 히트맵 컨트롤러")
+                blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
+                red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
+                
+            with col2:
+                fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
+                img_path = 'map_image.jpg'
+                if os.path.exists(img_path):
+                    img = mpimg.imread(img_path)
+                    ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
+                else:
+                    ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
 
-            im = ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, 
-                           zorder=3, interpolation='bilinear', vmin=vmin_level, vmax=red_threshold)
-            ax.axis('off')
-            st.pyplot(fig)
+                # ⭐ 여기가 핵심! 기존 df_traj 대신 filtered_traj를 사용합니다.
+                df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)]
+                
+                # 데이터가 너무 적을 때의 에러를 방지하는 안전장치
+                if len(df_exact) > 0:
+                    heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
+                    heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
+                    
+                    max_val = np.max(heatmap_smoothed)
+                    if max_val > 0:
+                        red_threshold = max_val * (red_sens / 100.0)
+                        vmin_level = max_val * 0.01
+
+                        im = ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, 
+                                       zorder=3, interpolation='bilinear', vmin=vmin_level, vmax=red_threshold)
+                    ax.axis('off')
+                    st.pyplot(fig)
+                else:
+                    st.warning("선택한 날짜에 유효한 동선(x, y) 데이터가 부족하여 히트맵을 그릴 수 없습니다.")
+        else:
+            st.info("선택한 날짜에 동선 데이터가 없습니다.")
     else:
-        st.error("'Real_Users_Trajectory1.csv' 파일이 필요합니다.")
-
+        st.error("데이터에 날짜 정보가 없거나 'trajectory_super_light.parquet' 파일이 없습니다.")
 # ====================================================================
 # [메뉴 3] AI 매대 시뮬레이터 (마르코프 체인)
 # ====================================================================
