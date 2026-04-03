@@ -139,7 +139,6 @@ if menu == "📊 트래픽 요약":
             st.markdown(f"### 📈 전체 누적 트래픽")
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
-            # 문자(str)로 통일해서 안전하게 필터링
             filtered_df = df_all[df_all['date'].astype(str) == str(selected_date)]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
@@ -156,48 +155,77 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ [개선됨] 데이터 타입 엇갈림을 완벽히 방지하는 푸른색 그래프 코드
+            # ⭐ [여기!] 성공하셨던 Matplotlib 파이썬 코드를 웹사이트용으로 이식했습니다.
             if df_traj is not None and 'time_index' in df_traj.columns:
-                st.markdown("### 🌊 시간대별 트래픽 흐름 (10분 단위)")
+                st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
                 try:
                     if selected_date == "전체 누적 보기":
                         t_df = df_traj.copy()
                     else:
-                        # 무조건 문자(String)로 통일해서 비교 (빈칸 오류 방지!)
                         t_df = df_traj[df_traj['date'].astype(str) == str(selected_date)].copy()
 
                     if not t_df.empty:
-                        # 문자열 방지용 숫자 강제 변환
+                        # 1. 10분 단위 시간 계산 (안전장치 포함)
                         t_df['time_index_num'] = pd.to_numeric(t_df['time_index'], errors='coerce').fillna(0)
-                        
-                        # 24시간 초과 방지 안전장치 추가 (하루 = 86400초)
-                        t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400
+                        t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400 # 24시간 제한
                         t_df['time_bin_10m'] = t_df['total_seconds'] // 600
 
+                        t_df['hour'] = (t_df['time_bin_10m'] * 10) // 60 % 24
+                        t_df['minute'] = (t_df['time_bin_10m'] * 10) % 60
+                        t_df['time_float'] = t_df['hour'] + (t_df['minute'] / 60.0)
+
+                        # 2. 트래픽 계산
                         if 'real_user_id' in t_df.columns:
-                            trend = t_df.groupby('time_bin_10m')['real_user_id'].nunique().reset_index()
-                            y_name = '방문객 수 (명)'
+                            trend_data = t_df.groupby('time_float')['real_user_id'].nunique().reset_index()
+                            y_label = '방문객 수 (명)'
                         else:
-                            trend = t_df.groupby('time_bin_10m').size().reset_index(name='real_user_id')
-                            y_name = '활동량 (발자국 수)'
+                            trend_data = t_df.groupby('time_float').size().reset_index(name='real_user_id')
+                            y_label = '활동량 (발자국 수)'
 
-                        base_date = pd.to_datetime("2026-01-01")
-                        trend['시간'] = base_date + pd.to_timedelta(trend['time_bin_10m'] * 10, unit='m')
-                        trend['트래픽'] = trend['real_user_id']
+                        trend_data = trend_data.sort_values('time_float')
 
-                        base = alt.Chart(trend).encode(
-                            x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', grid=True, tickCount=12)),
-                            y=alt.Y('트래픽:Q', title=y_name),
-                            tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('트래픽:Q', title=y_name)]
-                        )
+                        # 3. Matplotlib 그래프 그리기 (푸른색 테마 적용)
+                        fig, ax = plt.subplots(figsize=(14, 5), dpi=150)
 
-                        area = base.mark_area(interpolate='monotone', color='#60A5FA', opacity=0.3)
-                        line = base.mark_line(interpolate='monotone', color='#2563EB', strokeWidth=3)
+                        # 선 그리기 (파란색)
+                        ax.plot(trend_data['time_float'], trend_data.iloc[:, 1], 
+                                color='#2563EB', linewidth=3, marker='o', markersize=4, label='트래픽 흐름')
 
-                        chart = (area + line).properties(height=350).interactive()
-                        st.altair_chart(chart, use_container_width=True)
+                        # 선 아래쪽을 투명한 파란색으로 채우기
+                        ax.fill_between(trend_data['time_float'], trend_data.iloc[:, 1], color='#60A5FA', alpha=0.2)
+
+                        # 디자인 꾸미기
+                        ax.set_xlabel('시간 (0시 ~ 23시)', fontsize=11, fontweight='bold')
+                        ax.set_ylabel(y_label, fontsize=11, fontweight='bold')
+
+                        # X축 눈금을 1시간 단위로 표시
+                        ax.set_xticks(np.arange(0, 24, 1))
+                        ax.set_xticklabels([f"{int(x)}시" for x in np.arange(0, 24, 1)])
+
+                        # 가로 눈금선(점선) 추가
+                        ax.grid(axis='y', linestyle='--', alpha=0.4)
+
+                        # 위쪽, 오른쪽 테두리 없애서 깔끔한 대시보드 스타일로 만들기
+                        ax.spines['top'].set_visible(False)
+                        ax.spines['right'].set_visible(False)
+
+                        # 가장 붐볐던 최고점(Peak)에 글자 표시해주기
+                        if not trend_data.empty and len(trend_data) > 0:
+                            max_idx = trend_data.iloc[:, 1].idxmax()
+                            peak_time = trend_data.loc[max_idx, 'time_float']
+                            peak_val = trend_data.loc[max_idx].iloc[1]
+
+                            p_hour = int(peak_time)
+                            p_min = int(round((peak_time - p_hour) * 60))
+                            ax.annotate(f'🔥 최고점: {p_hour}시 {p_min}분 ({int(peak_val):,}명)', 
+                                        xy=(peak_time, peak_val), xytext=(peak_time, peak_val + (peak_val*0.08)),
+                                        ha='center', fontsize=12, fontweight='bold', color='#D32F2F',
+                                        arrowprops=dict(arrowstyle='->', color='#D32F2F', lw=1.5))
+
+                        # ⭐ 웹사이트에 그래프 띄우기!
+                        st.pyplot(fig)
+
                     else:
-                        # 데이터가 진짜 없으면 빈칸 대신 이 문구를 띄웁니다!
                         st.info("💡 선택하신 날짜에는 시간대별 동선(Trajectory) 데이터가 없습니다.")
                 except Exception as e:
                     st.warning(f"그래프 렌더링 오류: {e}")
