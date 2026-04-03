@@ -125,16 +125,18 @@ if menu == "📊 트래픽 요약":
             col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
             col3.metric("가장 붐빈 코너 1위", top_zone)
 
-            st.markdown("### 🏆 구역별 방문 횟수 TOP 10")
-            top10 = filtered_df['zone'].value_counts().head(10)
+            # ⭐ 제목을 '전체'로 바꿨습니다.
+            st.markdown("### 🏆 구역별 전체 방문 횟수")
             
-            # ⭐ 겹침 현상이 해결된 반응형 고급 차트(Altair) 적용 부분 ⭐
+            # ⭐ .head(10)을 지워서 모든 구역의 데이터를 가져옵니다.
+            all_zones = filtered_df['zone'].value_counts()
+            
             import altair as alt
             
-            df_top10 = top10.reset_index()
-            df_top10.columns = ['구역', '방문횟수']
+            df_zones = all_zones.reset_index()
+            df_zones.columns = ['구역', '방문횟수']
             
-            bars = alt.Chart(df_top10).mark_bar(cornerRadiusEnd=5).encode(
+            bars = alt.Chart(df_zones).mark_bar(cornerRadiusEnd=5).encode(
                 x=alt.X('방문횟수:Q', title='방문 횟수 (회)', axis=alt.Axis(grid=False)),
                 y=alt.Y('구역:N', sort='-x', title='', axis=alt.Axis(labelFontSize=13)),
                 color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
@@ -151,9 +153,10 @@ if menu == "📊 트래픽 요약":
                 text=alt.Text('방문횟수:Q', format=',')
             )
             
-            final_chart = (bars + text).properties(height=400)
+            # ⭐ 핵심 마법: 구역 개수에 따라 차트 세로 길이가 '자동'으로 무한정 늘어납니다! (겹침 완벽 방지)
+            final_chart = (bars + text).properties(height=alt.Step(35))
+            
             st.altair_chart(final_chart, use_container_width=True)
-            # ⭐ 차트 코드 끝 ⭐
             
         else:
             st.info("데이터가 없습니다.")
