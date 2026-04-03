@@ -67,14 +67,16 @@ def load_trajectory():
         return pd.read_parquet("trajectory_super_light.parquet")
     return None
 
-# ⭐ 에러 원인을 화면에 띄워주는 강력한 날씨 로드 함수!
+# ⭐ 짝 맞추기 기능이 추가된 똑똑한 날씨 로드 함수!
 @st.cache_data
 def load_weather():
     weather_dict = {}
     if os.path.exists("Day_Weather_Enhanced.csv"):
         try:
             df_w = pd.read_csv("Day_Weather_Enhanced.csv")
-            for _, row in df_w.iterrows():
+            for index, row in df_w.iterrows():
+                # 엑셀의 몇 번째 줄인지(순서)를 기억합니다. (1번부터 시작)
+                day_num = index + 1 
                 date_str = str(row['Date']).strip()
                 weather = str(row['Weather']).strip()
                 holiday_flag = str(row['Holiday']).strip().lower()
@@ -86,21 +88,28 @@ def load_weather():
                 elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
                 else: icon = "🌤️"
                 
-                weather_dict[date_str] = f"{date_str} [{icon} {weather} | {holiday}]"
+                # '1', '2' 같은 숫자(day_num)를 열쇠(Key)로 사용합니다!
+                weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday}]"
         except Exception as e:
             st.error(f"⚠️ 날씨 데이터를 읽는 중 오류 발생: {e}")
-    else:
-        st.warning("⚠️ 'Day_Weather_Enhanced.csv' 파일을 찾을 수 없습니다. 깃허브에 파일이 있는지 확인해주세요.")
     return weather_dict
 
 df_all = load_all_sessions()
 df_traj = load_trajectory()
 weather_info = load_weather()
 
+# ⭐ 메뉴에 날씨 글자를 바꿔치기 해주는 마법 함수
 def format_date_option(d):
     if d == "전체 누적 보기":
         return d
-    return weather_info.get(str(d), str(d))
+    
+    # "1" 같은 기존 데이터 이름에서 숫자를 뽑아냅니다.
+    nums = re.findall(r'\d+', str(d))
+    if nums:
+        day_num = int(nums[-1])
+        # 뽑아낸 숫자(예: 1)로 날씨 정보(10월 1일)를 찾아옵니다!
+        return weather_info.get(day_num, str(d))
+    return str(d)
 
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
@@ -138,7 +147,8 @@ if menu == "📊 트래픽 요약":
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
             filtered_df = df_all[df_all['date'] == selected_date]
-            display_title = weather_info.get(str(selected_date), str(selected_date))
+            # 제목에도 예쁜 날씨 정보를 적용합니다!
+            display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
             
@@ -197,7 +207,7 @@ elif menu == "🔥 정밀 히트맵":
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
             filtered_traj = df_traj[df_traj['date'] == selected_date]
-            display_title = weather_info.get(str(selected_date), str(selected_date))
+            display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
 
         if not filtered_traj.empty:
