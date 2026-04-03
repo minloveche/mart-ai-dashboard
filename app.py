@@ -55,19 +55,17 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 (⭐ 파일명 날짜 자동 추출기능 탑재)] ---
+# --- [2. 데이터 로드 및 지능형 날짜 매칭] ---
 @st.cache_data
 def load_all_sessions():
-    # Zone_Visit_Sessions 파일들을 모두 찾습니다.
-    files = glob.glob("Zone_Visit_Sessions_*.*") + glob.glob("sessions_compressed.*")
+    files = glob.glob("Zone_Visit_Sessions*.*") + glob.glob("sessions_compressed.*")
     files = [f for f in files if f.endswith('.parquet') or f.endswith('.csv')]
     if not files: return None
-    
     dfs = []
     for f in files:
         try:
             df = pd.read_parquet(f) if f.endswith('.parquet') else pd.read_csv(f)
-            # 파일명에서 '2025_10_1' 부분 추출하여 '2025-10-01' 형태로 고정!
+            # 파일명(2025_10_1)에서 날짜 추출
             match = re.search(r'(\d{4})_(\d{1,2})_(\d{1,2})', f)
             if match:
                 y, m, d = match.groups()
@@ -78,11 +76,9 @@ def load_all_sessions():
 
 @st.cache_data
 def load_trajectory():
-    # Real_Users_Trajectory 파일들을 모두 찾습니다.
     files = glob.glob("Real_Users_Trajectory*.*") + glob.glob("trajectory_*.*")
     files = [f for f in files if f.endswith('.parquet') or f.endswith('.csv')]
     if not files: return None
-    
     dfs = []
     for f in files:
         try:
@@ -107,7 +103,6 @@ def load_weather():
                 weather = str(row['Weather']).strip()
                 holiday_flag = str(row['Holiday']).strip().lower()
                 holiday = "🔴 휴일" if holiday_flag == 'yes' else "🟢 평일"
-                # 날씨 아이콘
                 weather_lower = weather.lower()
                 if "rain" in weather_lower: icon = "🌧️"
                 elif "cloud" in weather_lower: icon = "☁️"
@@ -121,20 +116,29 @@ df_all = load_all_sessions()
 df_traj = load_trajectory()
 weather_info = load_weather()
 
+# ⭐ [핵심] 어떤 형식이든 숫자만 뽑아서 날짜를 매칭하는 무적의 함수
+def safe_date_match(val, target):
+    def get_day_num(x):
+        nums = re.findall(r'\d+', str(x).split('.')[0])
+        return int(nums[-1]) if nums else None
+    
+    v1 = get_day_num(val)
+    v2 = get_day_num(target)
+    if v1 is not None and v2 is not None:
+        return v1 == v2
+    return str(val).strip() == str(target).strip()
+
 def format_date_option(d):
     if d == "전체 누적 보기": return d
-    # d는 이제 완벽한 '2025-10-01' 형태이므로, 끝의 숫자('01' -> 1)를 뽑아 날씨와 연결합니다.
     try:
-        day_num = int(d.split('-')[-1])
-        return weather_info.get(day_num, d)
-    except:
-        return str(d)
+        day_num = int(str(d).split('-')[-1])
+        return weather_info.get(day_num, str(d))
+    except: return str(d)
 
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
 menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 매대 시뮬레이터", "📍 센서(Sward) 위치"])
-
 
 # ====================================================================
 # [메뉴 1] 트래픽 요약
@@ -145,15 +149,11 @@ if menu == "📊 트래픽 요약":
     st.markdown("""
     <div style="border: 3px dashed #CBD5E1; padding: 60px; text-align: center; border-radius: 15px; background-color: #F8FAFC; margin-bottom: 30px;">
         <h3 style="color: #334155; margin-bottom: 10px;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h3>
-        <p style="color: #64748B; font-size: 16px;">
-            🚧 현재 개발 중인 기능입니다.<br>
-            향후 CCTV 및 센서 데이터와 연동되어, 현재 매장 내 고객의 이동이 <b>실시간 점(Dot)</b>으로 표시될 공간입니다.
-        </p>
+        <p style="color: #64748B; font-size: 16px;">🚧 현재 개발 중인 기능입니다.</p>
     </div>
     """, unsafe_allow_html=True)
 
     if df_all is not None and 'date' in df_all.columns:
-        # 날짜가 2025-10-01, 2025-10-02 로 깔끔해졌으므로 문자열 정렬만 하면 됩니다.
         available_dates = sorted(df_all['date'].unique().tolist())
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
@@ -162,8 +162,7 @@ if menu == "📊 트래픽 요약":
             st.markdown("### 📈 전체 누적 트래픽")
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
-            # ⭐ 복잡한 필터 없이 깔끔하게 일치(==) 확인!
-            filtered_df = df_all[df_all['date'] == str(selected_date)]
+            filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
@@ -172,239 +171,56 @@ if menu == "📊 트래픽 요약":
             col1, col2, col3 = st.columns(3)
             total_stays = filtered_df['stay_sec'].sum() / 3600
             top_zone = filtered_df['zone'].value_counts().index[0]
-
             col1.metric("해당 기간 방문 고객 (연인원)", f"{total_users:,.0f} 명")
             col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
             col3.metric("가장 붐빈 코너 1위", top_zone)
 
             st.markdown("---")
             
+            # ⭐ [해결] 누적과 개별 날짜 모두 예쁘게 나오는 그래프 구역
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
-            
             try:
                 trend_df = pd.read_csv("time_trend_light.csv")
                 
                 if selected_date == "전체 누적 보기":
-                    trend_df = trend_df.groupby('time_str')['visitors'].sum().reset_index()
-                    y_axis_title = '총 누적 방문객 수 (명)'
+                    # 누적일 때는 시간대별로 모두 합침
+                    plot_data = trend_df.groupby('time_str')['visitors'].sum().reset_index()
+                    y_title = '총 누적 방문객 수 (명)'
                 else:
-                    # 완벽히 통일된 형식으로 필터링
-                    trend_df = trend_df[trend_df['date'] == str(selected_date)]
-                    y_axis_title = '동시 체류 방문객 수 (명)'
+                    # 특정 날짜일 때는 무적의 매칭 함수 사용
+                    plot_data = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
+                    y_title = '동시 체류 방문객 수 (명)'
 
-                if not trend_df.empty:
+                if not plot_data.empty:
                     base_date = pd.to_datetime("2026-01-01")
-                    trend_df['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + trend_df['time_str'])
-                    trend_df['트래픽'] = trend_df['visitors']
-
-                    base = alt.Chart(trend_df).encode(
-                        x=alt.X('시간:T', title='시간 (영업시간)', axis=alt.Axis(format='%H:%M', grid=True, tickCount=12)),
-                        y=alt.Y('트래픽:Q', title=y_axis_title),
-                        tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('트래픽:Q', title='방문객 수')]
-                    )
-                    area = base.mark_area(interpolate='monotone', color='#60A5FA', opacity=0.3)
-                    line = base.mark_line(interpolate='monotone', color='#2563EB', strokeWidth=3)
+                    plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
                     
-                    chart = (area + line).properties(height=350).interactive()
-                    st.altair_chart(chart, use_container_width=True)
+                    chart = alt.Chart(plot_data).mark_area(
+                        interpolate='monotone', color='#60A5FA', opacity=0.3
+                    ).encode(
+                        x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M')),
+                        y=alt.Y('visitors:Q', title=y_title),
+                        tooltip=['time_str', 'visitors']
+                    ) + alt.Chart(plot_data).mark_line(
+                        interpolate='monotone', color='#2563EB', strokeWidth=3
+                    ).encode(
+                        x=alt.X('시간:T'),
+                        y=alt.Y('visitors:Q')
+                    )
+                    st.altair_chart(chart.properties(height=350).interactive(), use_container_width=True)
                 else:
                     st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
-            except FileNotFoundError:
-                st.warning("⚠️ 'time_trend_light.csv' 파일이 깃허브에 없습니다! 파일을 업로드해주세요.")
             except Exception as e:
                 st.error(f"그래프 생성 중 오류: {e}")
 
             st.markdown("---")
-
+            # 구역별 방문 횟수
             st.markdown("### 🏆 구역별 전체 방문 횟수")
-            all_zones = filtered_df['zone'].value_counts()
-            
-            df_zones = all_zones.reset_index()
+            df_zones = filtered_df['zone'].value_counts().reset_index()
             df_zones.columns = ['구역', '방문횟수']
-            
             bars = alt.Chart(df_zones).mark_bar(cornerRadiusEnd=5).encode(
-                x=alt.X('방문횟수:Q', title='방문 횟수 (회)', axis=alt.Axis(grid=False)),
-                y=alt.Y('구역:N', sort='-x', title='', axis=alt.Axis(labelFontSize=13)),
-                color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
-                tooltip=['구역', '방문횟수']
+                x=alt.X('방문횟수:Q', title='방문 횟수 (회)'),
+                y=alt.Y('구역:N', sort='-x', title=''),
+                color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None)
             )
-            
-            text = bars.mark_text(
-                align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold'
-            ).encode(text=alt.Text('방문횟수:Q', format=','))
-            
-            final_chart = (bars + text).properties(height=alt.Step(35))
-            st.altair_chart(final_chart, use_container_width=True)
-            
-        else:
-            st.info("데이터가 없습니다.")
-    else:
-        st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
-
-# ====================================================================
-# [메뉴 2] 정밀 히트맵
-# ====================================================================
-elif menu == "🔥 정밀 히트맵":
-    st.title("🔥 오리지널 구름 히트맵")
-    st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
-    
-    if df_traj is not None and 'date' in df_traj.columns:
-        available_dates = sorted(df_traj['date'].unique().tolist())
-        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
-        
-        if selected_date == "전체 누적 보기":
-            filtered_traj = df_traj
-            st.markdown("### 📈 전체 누적 동선 히트맵")
-        else:
-            filtered_traj = df_traj[df_traj['date'] == str(selected_date)]
-            display_title = format_date_option(selected_date)
-            st.markdown(f"### 📈 {display_title} 동선 히트맵")
-
-        if not filtered_traj.empty:
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.markdown("#### 히트맵 컨트롤러")
-                blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
-                red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
-                
-            with col2:
-                fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
-                img_path = 'map_image.jpg'
-                if os.path.exists(img_path):
-                    img = mpimg.imread(img_path)
-                    ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
-                else:
-                    ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-
-                df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)]
-                
-                if len(df_exact) > 0:
-                    heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
-                    heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
-                    
-                    max_val = np.max(heatmap_smoothed)
-                    if max_val > 0:
-                        red_threshold = max_val * (red_sens / 100.0)
-                        vmin_level = max_val * 0.01
-
-                        im = ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, 
-                                       zorder=3, interpolation='bilinear', vmin=vmin_level, vmax=red_threshold)
-                    ax.axis('off')
-                    st.pyplot(fig)
-                else:
-                    st.warning("선택한 날짜에 유효한 동선(x, y) 데이터가 부족하여 히트맵을 그릴 수 없습니다.")
-        else:
-            st.info("선택한 날짜에 동선 데이터가 없습니다.")
-    else:
-        st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
-
-# ====================================================================
-# [메뉴 3] AI 매대 시뮬레이터 (마르코프 체인)
-# ====================================================================
-elif menu == "🤖 AI 매대 시뮬레이터":
-    st.title("🤖 AI 매대 위치 최적화 시뮬레이터")
-    st.markdown("두 매대의 위치를 바꾸면 고객 동선이 어떻게 변할지 AI가 예측합니다.")
-    
-    if df_all is not None:
-        zones_list = list(ZONES.keys())
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            zone_A = st.selectbox("위치를 바꿀 매대 1", zones_list, index=zones_list.index('과자'))
-        with col2:
-            zone_B = st.selectbox("위치를 바꿀 매대 2", zones_list, index=zones_list.index('라면'))
-            
-        if st.button("🚀 시뮬레이션 시작", use_container_width=True):
-            if zone_A == zone_B:
-                st.warning("서로 다른 두 매대를 선택해 주세요.")
-            else:
-                with st.spinner("AI가 고객 이동 의도(Intent)를 계산 중입니다..."):
-                    def get_centers(z_dict):
-                        return {z: np.array([(c['x_min']+c['x_max'])/2, (c['y_min']+c['y_max'])/2]) for z, c in z_dict.items()}
-                    
-                    def calc_dist(centers):
-                        z_names = list(centers.keys())
-                        dist_df = pd.DataFrame(np.zeros((len(z_names), len(z_names))), index=z_names, columns=z_names)
-                        for z1 in z_names:
-                            for z2 in z_names:
-                                dist_df.loc[z1, z2] = np.linalg.norm(centers[z1] - centers[z2]) if z1 != z2 else 1.0
-                        return dist_df
-
-                    transition_counts = df_all.groupby(['zone', 'next_zone']).size().unstack(fill_value=0)
-                    current_prob = transition_counts.div(transition_counts.sum(axis=1), axis=0).fillna(0)
-                    current_traffic = df_all['zone'].value_counts()
-                    
-                    cur_centers = get_centers(ZONES)
-                    cur_dist = calc_dist(cur_centers)
-                    
-                    common_zones = current_prob.index.intersection(cur_dist.index)
-                    intent_matrix = current_prob.loc[common_zones, common_zones] * (cur_dist.loc[common_zones, common_zones] ** 2)
-                    
-                    new_zones = ZONES.copy()
-                    new_zones[zone_A], new_zones[zone_B] = new_zones[zone_B], new_zones[zone_A]
-                    
-                    new_centers = get_centers(new_zones)
-                    new_dist = calc_dist(new_centers)
-                    
-                    new_prob = intent_matrix / (new_dist.loc[common_zones, common_zones] ** 2)
-                    new_prob = new_prob.div(new_prob.sum(axis=1), axis=0).fillna(0)
-                    
-                    pred_traffic = current_traffic.copy()
-                    for _ in range(5):
-                        common_idx = pred_traffic.index.intersection(new_prob.index)
-                        pred_traffic = pred_traffic[common_idx].dot(new_prob.loc[common_idx])
-                    
-                    st.success("예측 완료!")
-                    res_col1, res_col2 = st.columns(2)
-                    
-                    old_a = current_traffic.get(zone_A, 0)
-                    new_a = pred_traffic.get(zone_A, 0)
-                    delta_a = new_a - old_a
-                    res_col1.metric(f"[{zone_A}] 코너 예측 방문객", f"{new_a:,.0f}명", f"{delta_a:,.0f}명 ({(delta_a/old_a)*100:.1f}%)")
-                    
-                    old_b = current_traffic.get(zone_B, 0)
-                    new_b = pred_traffic.get(zone_B, 0)
-                    delta_b = new_b - old_b
-                    res_col2.metric(f"[{zone_B}] 코너 예측 방문객", f"{new_b:,.0f}명", f"{delta_b:,.0f}명 ({(delta_b/old_b)*100:.1f}%)")
-    else:
-         st.error("데이터 파일이 필요합니다.")
-
-# ====================================================================
-# [메뉴 4] 센서(Sward) 위치 확인
-# ====================================================================
-elif menu == "📍 센서(Sward) 위치":
-    st.title("📍 매장 내 센서(Sward) 설치 위치")
-    st.markdown("현재 마트에 설치된 센서 장비들의 위치와 구역 정보를 지도 위에서 확인합니다.")
-    
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        st.info("💡 **센서(Sward) 연동 데이터**\n\n`swards (1).csv` 파일의 x, y 좌표를 기반으로 매장 지도 위에 실시간으로 센서 위치를 매핑합니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.")
-    
-    with col2:
-        try:
-            sward_df = pd.read_csv('swards (1).csv')
-            fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
-            img_path = 'map_image.jpg' 
-            if os.path.exists(img_path):
-                img = mpimg.imread(img_path)
-                ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
-            else:
-                st.warning(f"지도 이미지('{img_path}')를 찾을 수 없습니다.")
-                ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-            
-            ax.scatter(sward_df['x'], sward_df['y'], color='red', s=45, edgecolors='white', linewidth=1.5, zorder=2)
-            
-            for idx, row in sward_df.iterrows():
-                ax.annotate(str(row['description']), 
-                            (row['x'], row['y']), 
-                            xytext=(5, 5), textcoords='offset points', 
-                            fontsize=8, color='#1E3A8A', weight='bold', zorder=3)
-                
-            ax.axis('off')
-            st.pyplot(fig)
-            
-        except FileNotFoundError:
-            st.error("⚠️ 'swards (1).csv' 파일을 찾을 수 없습니다.")
-        except Exception as e:
-            st.error(f"오류가 발생했습니다: {e}")
+            st.altair_chart(bars.properties(height=alt.Step(35)), use_container_width=True)
