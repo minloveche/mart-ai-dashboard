@@ -74,7 +74,6 @@ df_traj = load_trajectory()
 # --- [3. 사이드바 메뉴] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
-# ⭐ 여기에 "📍 센서(Sward) 위치" 메뉴를 추가했습니다!
 menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 매대 시뮬레이터", "📍 센서(Sward) 위치"])
 
 
@@ -278,7 +277,7 @@ elif menu == "🤖 AI 매대 시뮬레이터":
          st.error("데이터 파일이 필요합니다.")
 
 # ====================================================================
-# [메뉴 4] 센서(Sward) 위치 확인 (⭐ 새로 추가된 메뉴!)
+# [메뉴 4] 센서(Sward) 위치 확인 (⭐ 오류 완벽 해결!)
 # ====================================================================
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
@@ -291,26 +290,21 @@ elif menu == "📍 센서(Sward) 위치":
     
     with col2:
         try:
-            # CSV 데이터 로드
-            sward_df = pd. pd.read_csv('swards (1).csv')
+            # ⭐ 오타가 있던 부분 수정 완료 (pd.read_csv)
+            sward_df = pd.read_csv('swards (1).csv')
             
-            # 고해상도 도화지 준비 (비율 자동 맞춤 적용)
             fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
             
-            # 배경 지도 깔기
             img_path = 'map_image.jpg' 
             if os.path.exists(img_path):
                 img = mpimg.imread(img_path)
-                # ⭐ 원본 사진 크기가 어찌되든 [0~663, 0~500] 도화지에 강제로 맞춥니다!
                 ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
             else:
                 st.warning(f"지도 이미지('{img_path}')를 찾을 수 없습니다.")
                 ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
             
-            # 빨간 점(센서) 찍기
             ax.scatter(sward_df['x'], sward_df['y'], color='red', s=45, edgecolors='white', linewidth=1.5, zorder=2)
             
-            # 점 옆에 센서 이름(description) 달아주기
             for idx, row in sward_df.iterrows():
                 ax.annotate(str(row['description']), 
                             (row['x'], row['y']), 
