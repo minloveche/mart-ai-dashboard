@@ -67,7 +67,6 @@ def load_trajectory():
         return pd.read_parquet("trajectory_super_light.parquet")
     return None
 
-# ⭐ 짝 맞추기 기능이 추가된 똑똑한 날씨 로드 함수!
 @st.cache_data
 def load_weather():
     weather_dict = {}
@@ -75,7 +74,6 @@ def load_weather():
         try:
             df_w = pd.read_csv("Day_Weather_Enhanced.csv")
             for index, row in df_w.iterrows():
-                # 엑셀의 몇 번째 줄인지(순서)를 기억합니다. (1번부터 시작)
                 day_num = index + 1 
                 date_str = str(row['Date']).strip()
                 weather = str(row['Weather']).strip()
@@ -88,7 +86,6 @@ def load_weather():
                 elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
                 else: icon = "🌤️"
                 
-                # '1', '2' 같은 숫자(day_num)를 열쇠(Key)로 사용합니다!
                 weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday}]"
         except Exception as e:
             st.error(f"⚠️ 날씨 데이터를 읽는 중 오류 발생: {e}")
@@ -98,16 +95,12 @@ df_all = load_all_sessions()
 df_traj = load_trajectory()
 weather_info = load_weather()
 
-# ⭐ 메뉴에 날씨 글자를 바꿔치기 해주는 마법 함수
 def format_date_option(d):
     if d == "전체 누적 보기":
         return d
-    
-    # "1" 같은 기존 데이터 이름에서 숫자를 뽑아냅니다.
     nums = re.findall(r'\d+', str(d))
     if nums:
         day_num = int(nums[-1])
-        # 뽑아낸 숫자(예: 1)로 날씨 정보(10월 1일)를 찾아옵니다!
         return weather_info.get(day_num, str(d))
     return str(d)
 
@@ -147,14 +140,12 @@ if menu == "📊 트래픽 요약":
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
             filtered_df = df_all[df_all['date'] == selected_date]
-            # 제목에도 예쁜 날씨 정보를 적용합니다!
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
             
         if not filtered_df.empty:
             col1, col2, col3 = st.columns(3)
-            
             total_stays = filtered_df['stay_sec'].sum() / 3600
             top_zone = filtered_df['zone'].value_counts().index[0]
 
@@ -162,6 +153,54 @@ if menu == "📊 트래픽 요약":
             col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
             col3.metric("가장 붐빈 코너 1위", top_zone)
 
+            st.markdown("---")
+            
+            # ⭐ [추가됨] 부드러운 푸른색 선 그래프 (시간대별 트래픽 흐름)
+            if df_traj is not None and 'time_index' in df_traj.columns:
+                st.markdown("### 🌊 시간대별 트래픽 흐름 (10분 단위)")
+                try:
+                    if selected_date == "전체 누적 보기":
+                        t_df = df_traj.copy()
+                    else:
+                        t_df = df_traj[df_traj['date'] == selected_date].copy()
+
+                    if not t_df.empty:
+                        # 10분(600초) 단위로 시간 쪼개기
+                        t_df['total_seconds'] = t_df['time_index'] * 10
+                        t_df['time_bin_10m'] = t_df['total_seconds'] // 600
+
+                        if 'real_user_id' in t_df.columns:
+                            trend = t_df.groupby('time_bin_10m')['real_user_id'].nunique().reset_index()
+                            y_name = '방문객 수 (명)'
+                        else:
+                            trend = t_df.groupby('time_bin_10m').size().reset_index(name='real_user_id')
+                            y_name = '활동량 (발자국 수)'
+
+                        # Altair 그래프를 위해 임의의 날짜와 진짜 시간을 결합
+                        base_date = pd.to_datetime("2026-01-01")
+                        trend['시간'] = base_date + pd.to_timedelta(trend['time_bin_10m'] * 10, unit='m')
+                        trend['트래픽'] = trend['real_user_id']
+
+                        # 부드러운 선(monotone)과 푸른색 그라데이션 적용
+                        base = alt.Chart(trend).encode(
+                            x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', grid=True, tickCount=12)),
+                            y=alt.Y('트래픽:Q', title=y_name),
+                            tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('트래픽:Q', title=y_name)]
+                        )
+
+                        # 선 아래쪽을 투명한 푸른색으로 칠하기 (Area)
+                        area = base.mark_area(interpolate='monotone', color='#60A5FA', opacity=0.3)
+                        # 진한 푸른색 곡선 (Line)
+                        line = base.mark_line(interpolate='monotone', color='#2563EB', strokeWidth=3)
+
+                        chart = (area + line).properties(height=350).interactive()
+                        st.altair_chart(chart, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"그래프를 생성할 수 없습니다. ({e})")
+            
+            st.markdown("---")
+
+            # 기존 구역별 방문 횟수
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             all_zones = filtered_df['zone'].value_counts()
             
