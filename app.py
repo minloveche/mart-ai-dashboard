@@ -9,7 +9,7 @@ import platform
 import re
 import glob
 import altair as alt
-import datetime # ⭐ 시간 슬라이더를 위한 기능 추가!
+import datetime
 
 # --- [1. 기본 설정 및 한글 폰트] ---
 st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
@@ -270,7 +270,7 @@ if menu == "📊 트래픽 요약":
 # ====================================================================
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
-    st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도, 그리고 **시간대**를 실시간으로 확인하세요.")
+    st.markdown("특정 시간을 선택하여 그 순간 사람들의 동선이 어떻게 분포되어 있는지 **스냅샷**으로 확인하세요.")
     
     if df_traj is not None and 'date' in df_traj.columns:
         available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
@@ -291,14 +291,19 @@ elif menu == "🔥 정밀 히트맵":
                 with st.container(border=True):
                     st.markdown("<h4 style='color: #1E293B; margin-top:0; font-size:18px;'>🎛️ 히트맵 컨트롤러</h4>", unsafe_allow_html=True)
                     
-                    # ⭐ [새 기능!] 시간대 양방향 슬라이더 
-                    time_range = st.slider(
-                        "⏰ 분석 시간대 (영업시간)",
+                    # ⭐ [새 기능!] 딱 한 개만 고르는 스냅샷 슬라이더 (10분 단위로 움직임)
+                    selected_time = st.slider(
+                        "⏰ 특정 시간 스냅샷 보기",
                         min_value=datetime.time(9, 0),  # 오픈
-                        max_value=datetime.time(23, 0), # 마감
-                        value=(datetime.time(10, 0), datetime.time(22, 0)), # 기본값
+                        max_value=datetime.time(22, 50), # 마감 직전 10분
+                        value=datetime.time(15, 0), # 기본값 오후 3시
+                        step=datetime.timedelta(minutes=10), # 10분 단위로만 딱딱 맞춰서 이동!
                         format="HH:mm"
                     )
+                    
+                    # 현재 보고 있는 시간을 보기 좋게 표시해 줍니다.
+                    end_time = (datetime.datetime.combine(datetime.date.today(), selected_time) + datetime.timedelta(minutes=10)).time()
+                    st.markdown(f"<p style='color:#2563EB; font-weight:bold; font-size:14px; text-align:center; background-color:#EFF6FF; padding:5px; border-radius:5px;'>📸 찰칵! [{selected_time.strftime('%H:%M')} ~ {end_time.strftime('%H:%M')}]</p>", unsafe_allow_html=True)
                     
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
                     blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
@@ -313,20 +318,18 @@ elif menu == "🔥 정밀 히트맵":
                 else:
                     ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
 
-                # ⭐ 슬라이더에서 선택한 시간(초 단위)으로 동선 데이터 필터링하기!
+                # ⭐ 스냅샷 시간에 맞춰 동선 데이터 필터링!
                 df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
                 
                 if 'time_index' in df_exact.columns and not df_exact.empty:
-                    # time_index (10초 단위)를 이용해 그날의 시간(초) 계산
                     time_idx = pd.to_numeric(df_exact['time_index'], errors='coerce').fillna(0)
                     total_secs = (time_idx * 10) % 86400
                     
-                    # 슬라이더 값(시/분)을 초로 바꾸기
-                    min_sec = time_range[0].hour * 3600 + time_range[0].minute * 60
-                    max_sec = time_range[1].hour * 3600 + time_range[1].minute * 60
+                    # 선택한 시간을 '초'로 변환 (오후 3시면 15*3600 = 54000초)
+                    target_sec = selected_time.hour * 3600 + selected_time.minute * 60
                     
-                    # 선택한 시간에 포함되는 발자국만 남기기!
-                    df_exact = df_exact[(total_secs >= min_sec) & (total_secs <= max_sec)]
+                    # 정확히 선택한 시간부터 10분(600초) 동안에 해당하는 데이터만 남기기!
+                    df_exact = df_exact[(total_secs >= target_sec) & (total_secs < target_sec + 600)]
 
                 if len(df_exact) > 0:
                     heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
@@ -342,7 +345,7 @@ elif menu == "🔥 정밀 히트맵":
                     ax.axis('off')
                     st.pyplot(fig)
                 else:
-                    st.warning("⚠️ 선택하신 시간대에는 매장 내에 고객 동선 데이터가 없습니다.")
+                    st.warning("⚠️ 선택하신 스냅샷 시간대에는 고객 동선 데이터가 없습니다.")
         else:
             st.info("선택한 날짜에 동선 데이터가 없습니다.")
     else:
