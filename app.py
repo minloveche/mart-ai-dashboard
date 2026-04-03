@@ -21,6 +21,66 @@ else:
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
+# ⭐ [디자인 업그레이드!] 몰래 주입하는 CSS 마법
+custom_css = """
+<style>
+    /* 1. 전체 배경을 세련된 밝은 회색(쿨톤)으로 변경 */
+    .stApp {
+        background-color: #F8FAFC;
+    }
+    
+    /* 2. 사이드바를 전문적인 다크 네이비로 변경 */
+    [data-testid="stSidebar"] {
+        background-color: #1E293B !important;
+    }
+    /* 사이드바 글씨를 모두 흰색으로 */
+    [data-testid="stSidebar"] * {
+        color: #F1F5F9 !important;
+    }
+    
+    /* 3. 대시보드 제목 스타일링 */
+    h1, h2, h3 {
+        color: #0F172A;
+        font-weight: 800 !important;
+        letter-spacing: -0.5px;
+    }
+    
+    /* 4. 핵심 데이터 숫자(Metric)를 '카드' 형태로 예쁘게 만들기 */
+    [data-testid="stMetric"] {
+        background-color: #FFFFFF;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        border: 1px solid #E2E8F0;
+        text-align: center;
+        transition: transform 0.2s;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-5px); /* 마우스 올리면 살짝 위로 뜹니다! */
+    }
+    /* 숫자 위에 적힌 작은 글씨 */
+    [data-testid="stMetricLabel"] {
+        font-size: 15px;
+        color: #64748B;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+    /* 진짜 큰 숫자 */
+    [data-testid="stMetricValue"] {
+        font-size: 36px;
+        color: #2563EB; /* 블루 포인트 컬러 */
+        font-weight: 900;
+    }
+    
+    /* 5. 입력창(셀렉트박스 등) 둥근 모서리 */
+    .stSelectbox > div[data-baseweb="select"] > div {
+        border-radius: 10px;
+        border: 1px solid #CBD5E1;
+    }
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
+
 # 구역(Zones) 좌표 데이터
 ZONES = {
     '행사(1)': {'x_min': 489, 'x_max': 528, 'y_min': 301, 'y_max': 374},
@@ -55,7 +115,7 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드 및 헬퍼 함수] ---
+# --- [2. 데이터 로드 및 지능형 날짜 매칭] ---
 @st.cache_data
 def load_all_sessions():
     files = glob.glob("Zone_Visit_Sessions*.*") + glob.glob("sessions_compressed.*")
@@ -115,13 +175,9 @@ df_all = load_all_sessions()
 df_traj = load_trajectory()
 weather_info = load_weather()
 
-# ⭐ [업그레이드] 어떤 날짜 형식이든 완벽하게 짝을 맞춥니다.
 def safe_date_match(val, target):
-    # 만약 둘 다 2025-10-01 처럼 완벽한 날짜라면 글자 그대로 정확하게 비교! (월 넘어감 방지)
     if '-' in str(val) and '-' in str(target):
         return str(val).strip() == str(target).strip()
-
-    # 옛날 데이터(1, 1.0)를 위한 안전장치
     def get_day_num(x):
         nums = re.findall(r'\d+', str(x).split('.')[0])
         return int(nums[-1]) if nums else None
@@ -132,14 +188,11 @@ def safe_date_match(val, target):
         return v1 == v2
     return str(val).strip() == str(target).strip()
 
-# ⭐ [핵심!] 1, 10, 2가 아니라 1, 2, ..., 10 순서대로 완벽 정렬해 주는 함수
 def sort_date_smart(d):
     nums = re.findall(r'\d+', str(d))
     if not nums: return 99999999
-    # 2025-10-01 이면 20251001 로 바꿔서 완벽하게 달력 정렬
     if len(nums) >= 3:
         return int(f"{nums[0]}{int(nums[1]):02d}{int(nums[2]):02d}")
-    # 그냥 1, 2 이면 숫자 크기대로 정렬
     return int(nums[-1])
 
 def format_date_option(d):
@@ -160,15 +213,18 @@ menu = st.sidebar.radio("메뉴를 선택하세요", ["📊 트래픽 요약", "
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
     
+    # 상단 알림 배너 스타일링
     st.markdown("""
-    <div style="border: 3px dashed #CBD5E1; padding: 60px; text-align: center; border-radius: 15px; background-color: #F8FAFC; margin-bottom: 30px;">
-        <h3 style="color: #334155; margin-bottom: 10px;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h3>
-        <p style="color: #64748B; font-size: 16px;">🚧 현재 개발 중인 기능입니다.</p>
+    <div style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 30px; border-radius: 15px; border-left: 5px solid #3B82F6; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <h4 style="color: #1E3A8A; margin-top: 0;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h4>
+        <p style="color: #475569; font-size: 15px; margin-bottom: 0;">
+            🚧 현재 개발 중인 기능입니다.<br>
+            향후 CCTV 및 센서 데이터와 연동되어, 현재 매장 내 고객의 이동이 <b>실시간 점(Dot)</b>으로 표시될 공간입니다.
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
     if df_all is not None and 'date' in df_all.columns:
-        # ⭐ 여기에 무적 정렬 함수(sort_date_smart)를 적용했습니다!
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
         
@@ -183,6 +239,7 @@ if menu == "📊 트래픽 요약":
             total_users = filtered_df['real_user_id'].nunique()
             
         if not filtered_df.empty:
+            # ⭐ CSS가 적용되어 세련된 카드로 나타납니다!
             col1, col2, col3 = st.columns(3)
             total_stays = filtered_df['stay_sec'].sum() / 3600
             top_zone = filtered_df['zone'].value_counts().index[0]
@@ -190,7 +247,7 @@ if menu == "📊 트래픽 요약":
             col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
             col3.metric("가장 붐빈 코너 1위", top_zone)
 
-            st.markdown("---")
+            st.markdown("<br>", unsafe_allow_html=True)
             
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
             try:
@@ -208,24 +265,24 @@ if menu == "📊 트래픽 요약":
                     plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
                     
                     chart = alt.Chart(plot_data).mark_area(
-                        interpolate='monotone', color='#60A5FA', opacity=0.3
+                        interpolate='monotone', color='#93C5FD', opacity=0.4 # 색상을 더 부드럽게 변경
                     ).encode(
-                        x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M')),
-                        y=alt.Y('visitors:Q', title=y_title),
+                        x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
+                        y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(labelColor='#475569')),
                         tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
                     ) + alt.Chart(plot_data).mark_line(
-                        interpolate='monotone', color='#2563EB', strokeWidth=3
+                        interpolate='monotone', color='#3B82F6', strokeWidth=3 # 메인 라인은 선명하게
                     ).encode(
                         x=alt.X('시간:T'),
                         y=alt.Y('visitors:Q')
                     )
-                    st.altair_chart(chart.properties(height=350).interactive(), use_container_width=True)
+                    st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
                 else:
                     st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
             except Exception as e:
                 st.error(f"그래프 생성 중 오류: {e}")
 
-            st.markdown("---")
+            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             df_zones = filtered_df['zone'].value_counts().reset_index()
             df_zones.columns = ['구역', '방문횟수']
@@ -236,7 +293,7 @@ if menu == "📊 트래픽 요약":
                 tooltip=['구역', '방문횟수']
             )
             text = bars.mark_text(
-                align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold'
+                align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B'
             ).encode(text=alt.Text('방문횟수:Q', format=','))
             
             final_chart = (bars + text).properties(height=alt.Step(35))
@@ -255,7 +312,6 @@ elif menu == "🔥 정밀 히트맵":
     st.markdown("슬라이더를 조절하여 히트맵의 붉은색 강도와 퍼짐 정도를 실시간으로 확인하세요.")
     
     if df_traj is not None and 'date' in df_traj.columns:
-        # ⭐ 히트맵 메뉴에도 무적 정렬 적용!
         available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
         
@@ -315,6 +371,11 @@ elif menu == "🤖 AI 매대 시뮬레이터":
     if df_all is not None:
         zones_list = list(ZONES.keys())
         
+        # 둥근 카드로 감싸기
+        st.markdown("""
+        <div style="background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+        """, unsafe_allow_html=True)
+        
         col1, col2 = st.columns(2)
         with col1:
             zone_A = st.selectbox("위치를 바꿀 매대 1", zones_list, index=zones_list.index('과자'))
@@ -373,6 +434,7 @@ elif menu == "🤖 AI 매대 시뮬레이터":
                     new_b = pred_traffic.get(zone_B, 0)
                     delta_b = new_b - old_b
                     res_col2.metric(f"[{zone_B}] 코너 예측 방문객", f"{new_b:,.0f}명", f"{delta_b:,.0f}명 ({(delta_b/old_b)*100:.1f}%)")
+        st.markdown("</div>", unsafe_allow_html=True)
     else:
          st.error("데이터 파일이 필요합니다.")
 
@@ -386,7 +448,12 @@ elif menu == "📍 센서(Sward) 위치":
     col1, col2 = st.columns([1, 3])
     
     with col1:
-        st.info("💡 **센서(Sward) 연동 데이터**\n\n`swards (1).csv` 파일의 x, y 좌표를 기반으로 매장 지도 위에 실시간으로 센서 위치를 매핑합니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.")
+        st.markdown("""
+        <div style="background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border-left: 5px solid #10B981;">
+            <p style="color: #047857; font-weight: bold; margin-bottom: 5px;">💡 센서(Sward) 연동 데이터</p>
+            <p style="color: #475569; font-size: 14px;"><code>swards (1).csv</code> 파일의 좌표를 기반으로 매장 지도 위에 실시간 매핑됩니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
         try:
@@ -400,13 +467,14 @@ elif menu == "📍 센서(Sward) 위치":
                 st.warning(f"지도 이미지('{img_path}')를 찾을 수 없습니다.")
                 ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
             
-            ax.scatter(sward_df['x'], sward_df['y'], color='red', s=45, edgecolors='white', linewidth=1.5, zorder=2)
+            ax.scatter(sward_df['x'], sward_df['y'], color='#EF4444', s=55, edgecolors='white', linewidth=2, zorder=2)
             
             for idx, row in sward_df.iterrows():
                 ax.annotate(str(row['description']), 
                             (row['x'], row['y']), 
                             xytext=(5, 5), textcoords='offset points', 
-                            fontsize=8, color='#1E3A8A', weight='bold', zorder=3)
+                            fontsize=8, color='#1E3A8A', weight='bold', zorder=3,
+                            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none", alpha=0.7))
                 
             ax.axis('off')
             st.pyplot(fig)
