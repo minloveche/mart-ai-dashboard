@@ -139,7 +139,8 @@ if menu == "📊 트래픽 요약":
             st.markdown(f"### 📈 전체 누적 트래픽")
             total_users = df_all.groupby('date')['real_user_id'].nunique().sum()
         else:
-            filtered_df = df_all[df_all['date'] == selected_date]
+            # 문자(str)로 통일해서 안전하게 필터링
+            filtered_df = df_all[df_all['date'].astype(str) == str(selected_date)]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 트래픽")
             total_users = filtered_df['real_user_id'].nunique()
@@ -155,18 +156,22 @@ if menu == "📊 트래픽 요약":
 
             st.markdown("---")
             
-            # ⭐ [추가됨] 부드러운 푸른색 선 그래프 (시간대별 트래픽 흐름)
+            # ⭐ [개선됨] 데이터 타입 엇갈림을 완벽히 방지하는 푸른색 그래프 코드
             if df_traj is not None and 'time_index' in df_traj.columns:
                 st.markdown("### 🌊 시간대별 트래픽 흐름 (10분 단위)")
                 try:
                     if selected_date == "전체 누적 보기":
                         t_df = df_traj.copy()
                     else:
-                        t_df = df_traj[df_traj['date'] == selected_date].copy()
+                        # 무조건 문자(String)로 통일해서 비교 (빈칸 오류 방지!)
+                        t_df = df_traj[df_traj['date'].astype(str) == str(selected_date)].copy()
 
                     if not t_df.empty:
-                        # 10분(600초) 단위로 시간 쪼개기
-                        t_df['total_seconds'] = t_df['time_index'] * 10
+                        # 문자열 방지용 숫자 강제 변환
+                        t_df['time_index_num'] = pd.to_numeric(t_df['time_index'], errors='coerce').fillna(0)
+                        
+                        # 24시간 초과 방지 안전장치 추가 (하루 = 86400초)
+                        t_df['total_seconds'] = (t_df['time_index_num'] * 10) % 86400
                         t_df['time_bin_10m'] = t_df['total_seconds'] // 600
 
                         if 'real_user_id' in t_df.columns:
@@ -176,27 +181,26 @@ if menu == "📊 트래픽 요약":
                             trend = t_df.groupby('time_bin_10m').size().reset_index(name='real_user_id')
                             y_name = '활동량 (발자국 수)'
 
-                        # Altair 그래프를 위해 임의의 날짜와 진짜 시간을 결합
                         base_date = pd.to_datetime("2026-01-01")
                         trend['시간'] = base_date + pd.to_timedelta(trend['time_bin_10m'] * 10, unit='m')
                         trend['트래픽'] = trend['real_user_id']
 
-                        # 부드러운 선(monotone)과 푸른색 그라데이션 적용
                         base = alt.Chart(trend).encode(
                             x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', grid=True, tickCount=12)),
                             y=alt.Y('트래픽:Q', title=y_name),
                             tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('트래픽:Q', title=y_name)]
                         )
 
-                        # 선 아래쪽을 투명한 푸른색으로 칠하기 (Area)
                         area = base.mark_area(interpolate='monotone', color='#60A5FA', opacity=0.3)
-                        # 진한 푸른색 곡선 (Line)
                         line = base.mark_line(interpolate='monotone', color='#2563EB', strokeWidth=3)
 
                         chart = (area + line).properties(height=350).interactive()
                         st.altair_chart(chart, use_container_width=True)
+                    else:
+                        # 데이터가 진짜 없으면 빈칸 대신 이 문구를 띄웁니다!
+                        st.info("💡 선택하신 날짜에는 시간대별 동선(Trajectory) 데이터가 없습니다.")
                 except Exception as e:
-                    st.warning(f"그래프를 생성할 수 없습니다. ({e})")
+                    st.warning(f"그래프 렌더링 오류: {e}")
             
             st.markdown("---")
 
@@ -245,7 +249,7 @@ elif menu == "🔥 정밀 히트맵":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
         else:
-            filtered_traj = df_traj[df_traj['date'] == selected_date]
+            filtered_traj = df_traj[df_traj['date'].astype(str) == str(selected_date)]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
 
