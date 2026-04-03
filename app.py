@@ -128,13 +128,13 @@ if menu == "📊 트래픽 요약":
             st.markdown("### 🏆 구역별 방문 횟수 TOP 10")
             top10 = filtered_df['zone'].value_counts().head(10)
             
-            # ⭐ 방금 말씀드린 고급 디자인 차트(Altair) 적용 부분입니다! ⭐
+            # ⭐ 겹침 현상이 해결된 반응형 고급 차트(Altair) 적용 부분 ⭐
             import altair as alt
             
             df_top10 = top10.reset_index()
             df_top10.columns = ['구역', '방문횟수']
             
-            bars = alt.Chart(df_top10).mark_bar(cornerRadiusEnd=5, height=35).encode(
+            bars = alt.Chart(df_top10).mark_bar(cornerRadiusEnd=5).encode(
                 x=alt.X('방문횟수:Q', title='방문 횟수 (회)', axis=alt.Axis(grid=False)),
                 y=alt.Y('구역:N', sort='-x', title='', axis=alt.Axis(labelFontSize=13)),
                 color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
@@ -151,8 +151,9 @@ if menu == "📊 트래픽 요약":
                 text=alt.Text('방문횟수:Q', format=',')
             )
             
-            st.altair_chart(bars + text, use_container_width=True)
-            # ⭐ 여기까지가 차트 코드입니다. ⭐
+            final_chart = (bars + text).properties(height=400)
+            st.altair_chart(final_chart, use_container_width=True)
+            # ⭐ 차트 코드 끝 ⭐
             
         else:
             st.info("데이터가 없습니다.")
