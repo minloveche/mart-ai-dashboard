@@ -440,7 +440,7 @@ elif menu == "📍 센서(Sward) 위치":
             ax.axis('off')
             st.pyplot(fig)
         except FileNotFoundError: st.error("⚠️ 'swards (1).csv' 파일을 찾을 수 없습니다.")
-        except Exception as e: st.error(f"오류가 발생했습니다: {e}")streamlit as st
+        except Exception as e: st.error(f"오류가 발생했습니다: {e}")
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
