@@ -3,4 +3,8 @@ pandas
 numpy
 matplotlib
 scipy
+altair
+scikit-learn
+joblib
 pyarrow
+fastparquet
