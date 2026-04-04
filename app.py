@@ -65,7 +65,7 @@ def load_all_sessions():
     for f in files:
         try:
             df = pd.read_parquet(f) if f.endswith('.parquet') else pd.read_csv(f)
-            match = re.search(r'(\d{4})_(\d{1,2})_(\d{1,2})', f)
+            match = re.search(r'(\d{4})[-_](\d{1,2})[-_](\d{1,2})', f)
             if match:
                 y, m, d = match.groups()
                 df['date'] = f"{y}-{int(m):02d}-{int(d):02d}"
@@ -82,7 +82,7 @@ def load_trajectory():
     for f in files:
         try:
             df = pd.read_parquet(f) if f.endswith('.parquet') else pd.read_csv(f)
-            match = re.search(r'(\d{4})_(\d{1,2})_(\d{1,2})', f)
+            match = re.search(r'(\d{4})[-_](\d{1,2})[-_](\d{1,2})', f)
             if match:
                 y, m, d = match.groups()
                 df['date'] = f"{y}-{int(m):02d}-{int(d):02d}"
@@ -266,42 +266,44 @@ elif menu == "🔥 정밀 히트맵":
     else: st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
 
 # ====================================================================
-# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (조건부 동적 UI 적용!)
+# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (V5 자동화/PrePost 적용)
 # ====================================================================
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
-    st.markdown("머신러닝이 세밀한 **날씨, 요일, 휴일 요인**을 종합 분석하여 트래픽 곡선과 맞춤형 운영 방안을 제안합니다.")
+    st.markdown("머신러닝이 **날씨, 요일별 평일/주말 판별, 공휴일 여부(전/후 포함)**를 종합 분석하여 운영 방안을 제안합니다.")
     
     with st.container(border=True):
-        st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 세밀하게 입력해주세요</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 입력해주세요 (자동계산 지원)</h4>", unsafe_allow_html=True)
         
-        # 첫 번째 줄: 날씨와 세부 요일
+        # 1. 날씨 & 요일 선택
         row1_col1, row1_col2 = st.columns(2)
         with row1_col1:
             future_weather = st.selectbox("⛅ 1. 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
         with row1_col2:
-            future_dayname = st.selectbox("📅 2. 세부 요일", ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", "Friday (금)", "Saturday (토)", "Sunday (일)"])
+            future_dayname = st.selectbox("📅 2. 요일 선택 (평일/주말 자동분류)", 
+                                          ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", 
+                                           "Friday (금)", "Saturday (토)", "Sunday (일)"])
             
-        # 두 번째 줄: 평일/주말/공휴일 선택
+        # [핵심 로직 1] 사용자가 선택한 요일을 보고 주말/평일을 0.1초 만에 자동 계산!
+        is_weekend = 1 if "Saturday" in future_dayname or "Sunday" in future_dayname else 0
+        weekend_text = "주말" if is_weekend else "평일"
+
+        # 2. 공휴일 & 특수일 선택
         row2_col1, row2_col2, row2_col3 = st.columns(3)
         with row2_col1:
-            future_daytype = st.selectbox("🎈 3. 평일/주말/공휴일 구분", ["Weekday (평일)", "Weekend (주말)", "Holiday (공휴일)"])
+            future_holiday = st.selectbox(f"🎈 3. 공휴일 여부 (현재 {weekend_text})", ["No (공휴일 아님)", "Yes (공휴일 맞음)"])
+            is_holiday = 1 if "Yes" in future_holiday else 0
             
-        # 초기값 세팅
-        is_working_holiday = 0
-        is_weekend_holiday = 0
-        is_long = "Short"
-        
-        # ⭐ [조건부 렌더링 핵심 마법!] "Holiday"를 선택했을 때만 나타나는 2개의 창
-        if "Holiday" in future_daytype:
+        is_long_holiday = 0
+        if is_holiday:
             with row2_col2:
-                holiday_detail = st.selectbox("🎯 세부 공휴일 유형", ["평일 공휴일 (Working Holiday)", "주말 공휴일 (Weekend Holiday)"])
-                if "Working" in holiday_detail:
-                    is_working_holiday = 1
-                else:
-                    is_weekend_holiday = 1
-            with row2_col3:
-                is_long = st.selectbox("🎒 4. 명절/긴 연휴 여부", ["일반적인 공휴일 (Short)", "설/추석 등 긴 연휴 (Long)"])
+                long_holiday_str = st.selectbox("🎒 4. 명절/긴 연휴 여부", ["일반적인 공휴일 (Short)", "설/추석 등 긴 연휴 (Long)"])
+                is_long_holiday = 1 if "Long" in long_holiday_str else 0
+                
+        with row2_col3:
+            pre_post_str = st.selectbox("⏳ 5. 공휴일 전/후 여부", ["해당 없음 (일반적인 날)", "공휴일 전날 (Pre-Holiday)", "공휴일 다음날 (Post-Holiday)"])
+            is_pre_holiday = 1 if "Pre" in pre_post_str else 0
+            is_post_holiday = 1 if "Post" in pre_post_str else 0
             
         if st.button("🤖 AI 예측 및 그래프 생성하기", use_container_width=True):
             try:
@@ -317,19 +319,19 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
                     
-                    # 데이터 입력 매핑
-                    input_data['Is_Long_Holiday'] = 1 if "Long" in is_long else 0
-                    input_data['Is_Working_Holiday'] = is_working_holiday
-                    input_data['Is_Weekend_Holiday'] = is_weekend_holiday
+                    # [핵심 로직 2] AI에게 보낼 변수들을 자동 세팅
+                    input_data['Is_Weekend'] = is_weekend
+                    input_data['Is_Holiday'] = is_holiday
+                    input_data['Is_Working_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 0) else 0 # 요일에 따라 자동판별
+                    input_data['Is_Weekend_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 1) else 0 # 요일에 따라 자동판별
+                    input_data['Is_Long_Holiday'] = is_long_holiday
+                    input_data['Is_Pre_Holiday'] = is_pre_holiday
+                    input_data['Is_Post_Holiday'] = is_post_holiday
                     
                     if "Sunny" in future_weather: input_data['Weather_Clean_Sunny'] = 1
                     elif "Cloudy" in future_weather: input_data['Weather_Clean_Cloudy'] = 1
                     elif "Rainy" in future_weather: input_data['Weather_Clean_Rainy'] = 1
                         
-                    if "Weekday" in future_daytype: input_data['DayType_Weekday'] = 1
-                    elif "Weekend" in future_daytype: input_data['DayType_Weekend'] = 1
-                    elif "Holiday" in future_daytype: input_data['DayType_Holiday'] = 1
-                    
                     selected_day = day_map[future_dayname]
                     day_col = f"DayName_Clean_{selected_day}"
                     if day_col in input_data.columns:
@@ -366,7 +368,7 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                     ).encode(x=alt.X('시간:T'), y=alt.Y('예상방문객:Q'))
                     st.altair_chart(chart.properties(height=250), use_container_width=True)
                 except Exception as e:
-                    st.warning("시간대별 트래픽 데이터를 불러오는 데 실패하여 그래프를 생략합니다.")
+                    pass
 
                 st.markdown("""
                 <div style="background-color: #F8FAFC; padding: 25px; border-radius: 15px; border-left: 5px solid #8B5CF6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
@@ -374,25 +376,31 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 """, unsafe_allow_html=True)
                 
                 holiday_txt = ""
-                if "Holiday" in future_daytype:
-                    holiday_type_str = "평일" if is_working_holiday else "주말"
-                    holiday_txt = f"(공휴일[{holiday_type_str}] / {'명절 연휴' if 'Long' in is_long else '일반'})"
+                if is_holiday:
+                    holiday_txt = f"(공휴일[{weekend_text}] / {'명절 연휴' if is_long_holiday else '일반'})"
                 else:
-                    holiday_txt = f"({future_daytype.split()[0]})"
+                    holiday_txt = f"({weekend_text})"
+                
+                pre_post_txt = ""
+                if is_pre_holiday: pre_post_txt = " 📌 **[공휴일 전날 효과 적용됨]**"
+                if is_post_holiday: pre_post_txt = " 📌 **[공휴일 다음날 효과 적용됨]**"
                     
                 day_str = future_dayname.split()[1].replace('(', '').replace(')', '') 
-                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{day_str}요일 {holiday_txt}** 입니다.<br><br>", unsafe_allow_html=True)
+                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{day_str}요일 {holiday_txt}** 입니다.{pre_post_txt}<br><br>", unsafe_allow_html=True)
                 
                 for zone, traffic in predictions.items():
-                    if "Rainy" in future_weather and zone == '라면':
+                    if is_pre_holiday and zone == '주류':
+                        st.markdown(f"🍷 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 내일은 공휴일 전날입니다! 퇴근 후 홈파티 수요로 주류/안주류 트래픽이 폭발할 예정입니다. 맥주와 소주 매대를 전진 배치하세요.<br><br>", unsafe_allow_html=True)
+                    elif is_post_holiday and zone == '채소/계란/과일':
+                        st.markdown(f"🥬 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 연휴/공휴일 직후 텅 빈 냉장고를 채우려는 신선식품 수요가 급증합니다. 신선 코너 재고를 평소의 1.3배 이상 확보하세요.<br><br>", unsafe_allow_html=True)
+                    elif "Rainy" in future_weather and zone == '라면':
                         st.markdown(f"🍜 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
                         st.markdown(f"👉 **AI 인사이트:** 비 오는 날 국물 요리 수요 급증이 예상됩니다. 라면 재고를 보충하세요.<br><br>", unsafe_allow_html=True)
-                    elif ("Holiday" in future_daytype or "Weekend" in future_daytype) and zone == '장난감':
+                    elif (is_holiday or is_weekend) and zone == '장난감':
                         st.markdown(f"🧸 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
                         st.markdown(f"👉 **AI 인사이트:** 주말/휴일 가족 단위 방문객 증가로 트래픽 폭발이 예상됩니다. 전담 직원을 배치하세요.<br><br>", unsafe_allow_html=True)
-                    elif "Long" in is_long and zone == '주류':
-                        st.markdown(f"🍷 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
-                        st.markdown(f"👉 **AI 인사이트:** 명절 긴 연휴를 맞아 대용량 주류 및 와인 수요가 뜁니다. 선물세트를 전진 배치하세요.<br><br>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"🛒 **[{zone}] 코너 예상 방문객: {traffic:,.0f}명**<br><br>", unsafe_allow_html=True)
                 
