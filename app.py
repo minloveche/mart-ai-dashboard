@@ -23,59 +23,37 @@ else:
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# ⭐ [디자인 스타일링]
 custom_css = """
 <style>
     .stApp { background-color: #F8FAFC; }
     [data-testid="stSidebar"] { background-color: #1E293B !important; }
     [data-testid="stSidebar"] * { color: #F1F5F9 !important; }
     h1, h2, h3 { color: #0F172A; font-weight: 800 !important; letter-spacing: -0.5px; }
-    [data-testid="stMetric"] {
-        background-color: #FFFFFF; padding: 20px; border-radius: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #E2E8F0; text-align: center; transition: transform 0.2s;
-    }
+    [data-testid="stMetric"] { background-color: #FFFFFF; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #E2E8F0; text-align: center; transition: transform 0.2s; }
     [data-testid="stMetric"]:hover { transform: translateY(-5px); }
     [data-testid="stMetricLabel"] { font-size: 15px; color: #64748B; font-weight: 600; }
     [data-testid="stMetricValue"] { font-size: 36px; color: #2563EB; font-weight: 900; }
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #FFFFFF !important; border-radius: 15px !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; border: 1px solid #E2E8F0 !important; padding: 15px !important;
-    }
+    [data-testid="stVerticalBlockBorderWrapper"] { background-color: #FFFFFF !important; border-radius: 15px !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; border: 1px solid #E2E8F0 !important; padding: 15px !important; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
 ZONES = {
-    '행사(1)': {'x_min': 489, 'x_max': 528, 'y_min': 301, 'y_max': 374},
-    '문구(1)': {'x_min': 528, 'x_max': 587, 'y_min': 303, 'y_max': 372},
-    '장난감': {'x_min': 494, 'x_max': 560, 'y_min': 398, 'y_max': 485},
-    '침구': {'x_min': 420, 'x_max': 494, 'y_min': 396, 'y_max': 482},
-    '보수용품': {'x_min': 239, 'x_max': 421, 'y_min': 397, 'y_max': 493},
-    '음료': {'x_min': 183, 'x_max': 239, 'y_min': 397, 'y_max': 452},
-    '주류': {'x_min': 99,  'x_max': 183, 'y_min': 389, 'y_max': 452},
-    '식품코너': {'x_min': 42,  'x_max': 102, 'y_min': 313, 'y_max': 406},
-    '과자': {'x_min': 127, 'x_max': 186, 'y_min': 301, 'y_max': 374},
-    '화장품': {'x_min': 487, 'x_max': 586, 'y_min': 163, 'y_max': 267},
-    '반찬/소스': {'x_min': 302, 'x_max': 372, 'y_min': 161, 'y_max': 223},
-    '커피/차': {'x_min': 208, 'x_max': 285, 'y_min': 266, 'y_max': 300},
-    '주방용품': {'x_min': 298, 'x_max': 393, 'y_min': 300, 'y_max': 373},
-    '자동차용품': {'x_min': 389, 'x_max': 415, 'y_min': 298, 'y_max': 376},
-    '문구(2)': {'x_min': 420, 'x_max': 468, 'y_min': 298, 'y_max': 374},
-    '냉동식품': {'x_min': 128, 'x_max': 189, 'y_min': 163, 'y_max': 299},
-    '퍼스널케어': {'x_min': 371, 'x_max': 469, 'y_min': 161, 'y_max': 230},
-    '축산': {'x_min': 59,  'x_max': 105, 'y_min': 169, 'y_max': 297},
-    '수산': {'x_min': 61,  'x_max': 159, 'y_min': 73,  'y_max': 138},
-    '속옷': {'x_min': 463, 'x_max': 536, 'y_min': 56,  'y_max': 135},
-    '스포츠': {'x_min': 603, 'x_max': 633, 'y_min': 57,  'y_max': 137},
-    '스포츠(2)': {'x_min': 537, 'x_max': 602, 'y_min': 57,  'y_max': 137},
-    '제임스딘': {'x_min': 429, 'x_max': 451, 'y_min': 73,  'y_max': 137},
-    '곡물/건조식품': {'x_min': 293, 'x_max': 426, 'y_min': 71,  'y_max': 137},
-    '채소/계란/과일': {'x_min': 158, 'x_max': 292, 'y_min': 81,  'y_max': 138},
-    '라면': {'x_min': 209, 'x_max': 305, 'y_min': 161, 'y_max': 227},
-    '행사(2)': {'x_min': 207, 'x_max': 284, 'y_min': 223, 'y_max': 265},
-    '시리얼': {'x_min': 286, 'x_max': 307, 'y_min': 229, 'y_max': 295},
-    '휴지': {'x_min': 207, 'x_max': 294, 'y_min': 302, 'y_max': 375},
-    '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
+    '행사(1)': {'x_min': 489, 'x_max': 528, 'y_min': 301, 'y_max': 374}, '문구(1)': {'x_min': 528, 'x_max': 587, 'y_min': 303, 'y_max': 372},
+    '장난감': {'x_min': 494, 'x_max': 560, 'y_min': 398, 'y_max': 485}, '침구': {'x_min': 420, 'x_max': 494, 'y_min': 396, 'y_max': 482},
+    '보수용품': {'x_min': 239, 'x_max': 421, 'y_min': 397, 'y_max': 493}, '음료': {'x_min': 183, 'x_max': 239, 'y_min': 397, 'y_max': 452},
+    '주류': {'x_min': 99,  'x_max': 183, 'y_min': 389, 'y_max': 452}, '식품코너': {'x_min': 42,  'x_max': 102, 'y_min': 313, 'y_max': 406},
+    '과자': {'x_min': 127, 'x_max': 186, 'y_min': 301, 'y_max': 374}, '화장품': {'x_min': 487, 'x_max': 586, 'y_min': 163, 'y_max': 267},
+    '반찬/소스': {'x_min': 302, 'x_max': 372, 'y_min': 161, 'y_max': 223}, '커피/차': {'x_min': 208, 'x_max': 285, 'y_min': 266, 'y_max': 300},
+    '주방용품': {'x_min': 298, 'x_max': 393, 'y_min': 300, 'y_max': 373}, '자동차용품': {'x_min': 389, 'x_max': 415, 'y_min': 298, 'y_max': 376},
+    '문구(2)': {'x_min': 420, 'x_max': 468, 'y_min': 298, 'y_max': 374}, '냉동식품': {'x_min': 128, 'x_max': 189, 'y_min': 163, 'y_max': 299},
+    '퍼스널케어': {'x_min': 371, 'x_max': 469, 'y_min': 161, 'y_max': 230}, '축산': {'x_min': 59,  'x_max': 105, 'y_min': 169, 'y_max': 297},
+    '수산': {'x_min': 61,  'x_max': 159, 'y_min': 73,  'y_max': 138}, '속옷': {'x_min': 463, 'x_max': 536, 'y_min': 56,  'y_max': 135},
+    '스포츠': {'x_min': 603, 'x_max': 633, 'y_min': 57,  'y_max': 137}, '스포츠(2)': {'x_min': 537, 'x_max': 602, 'y_min': 57,  'y_max': 137},
+    '제임스딘': {'x_min': 429, 'x_max': 451, 'y_min': 73,  'y_max': 137}, '곡물/건조식품': {'x_min': 293, 'x_max': 426, 'y_min': 71,  'y_max': 137},
+    '채소/계란/과일': {'x_min': 158, 'x_max': 292, 'y_min': 81,  'y_max': 138}, '라면': {'x_min': 209, 'x_max': 305, 'y_min': 161, 'y_max': 227},
+    '행사(2)': {'x_min': 207, 'x_max': 284, 'y_min': 223, 'y_max': 265}, '시리얼': {'x_min': 286, 'x_max': 307, 'y_min': 229, 'y_max': 295},
+    '휴지': {'x_min': 207, 'x_max': 294, 'y_min': 302, 'y_max': 375}, '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
 @st.cache_data
@@ -162,7 +140,6 @@ def format_date_option(d):
 
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
-
 main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
 if main_category == "🤖 AI 어드바이저":
@@ -180,11 +157,9 @@ if menu == "📊 트래픽 요약":
         <p style="color: #475569; font-size: 15px; margin-bottom: 0;">🚧 현재 개발 중인 기능입니다.</p>
     </div>
     """, unsafe_allow_html=True)
-
     if df_all is not None and 'date' in df_all.columns:
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
-        
         if selected_date == "전체 누적 보기":
             filtered_df = df_all
             st.markdown("### 📈 전체 누적 트래픽")
@@ -202,9 +177,7 @@ if menu == "📊 트래픽 요약":
             col1.metric("해당 기간 방문 고객 (연인원)", f"{total_users:,.0f} 명")
             col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
             col3.metric("가장 붐빈 코너 1위", top_zone)
-
             st.markdown("<br>", unsafe_allow_html=True)
-            
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
             try:
                 trend_df = pd.read_csv("time_trend_light.csv")
@@ -214,24 +187,17 @@ if menu == "📊 트래픽 요약":
                 else:
                     plot_data = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
                     y_title = '동시 체류 방문객 수 (명)'
-
                 if not plot_data.empty:
                     base_date = pd.to_datetime("2026-01-01")
                     plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
-                    chart = alt.Chart(plot_data).mark_area(
-                        interpolate='monotone', color='#93C5FD', opacity=0.4
-                    ).encode(
+                    chart = alt.Chart(plot_data).mark_area(interpolate='monotone', color='#93C5FD', opacity=0.4).encode(
                         x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
                         y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(labelColor='#475569')),
                         tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
-                    ) + alt.Chart(plot_data).mark_line(
-                        interpolate='monotone', color='#3B82F6', strokeWidth=3
-                    ).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
+                    ) + alt.Chart(plot_data).mark_line(interpolate='monotone', color='#3B82F6', strokeWidth=3).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
                     st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
-                else:
-                    st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
+                else: st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
             except: st.error("그래프 생성 중 오류가 발생했습니다.")
-
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             df_zones = filtered_df['zone'].value_counts().reset_index()
@@ -245,6 +211,7 @@ if menu == "📊 트래픽 요약":
             text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=','))
             st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
         else: st.info("데이터가 없습니다.")
+    else: st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
 
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
@@ -252,7 +219,6 @@ elif menu == "🔥 정밀 히트맵":
     if df_traj is not None and 'date' in df_traj.columns:
         available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
-        
         if selected_date == "전체 누적 보기":
             filtered_traj = df_traj
             st.markdown("### 📈 전체 누적 동선 히트맵")
@@ -260,7 +226,6 @@ elif menu == "🔥 정밀 히트맵":
             filtered_traj = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))]
             display_title = format_date_option(selected_date)
             st.markdown(f"### 📈 {display_title} 동선 히트맵")
-
         if not filtered_traj.empty:
             col1, col2 = st.columns([1, 3])
             with col1:
@@ -280,14 +245,12 @@ elif menu == "🔥 정밀 히트맵":
                     ax.imshow(img, extent=[0, 663, 500, 0], zorder=1)
                 else:
                     ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-
                 df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
                 if 'time_index' in df_exact.columns and not df_exact.empty:
                     time_idx = pd.to_numeric(df_exact['time_index'], errors='coerce').fillna(0)
                     total_secs = (time_idx * 10) % 86400
                     target_sec = selected_time.hour * 3600 + selected_time.minute * 60
                     df_exact = df_exact[(total_secs >= target_sec) & (total_secs < target_sec + 600)]
-
                 if len(df_exact) > 0:
                     heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
                     heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
@@ -299,9 +262,11 @@ elif menu == "🔥 정밀 히트맵":
                     ax.axis('off')
                     st.pyplot(fig)
                 else: st.warning("⚠️ 선택하신 스냅샷 시간대에는 고객 동선 데이터가 없습니다.")
+        else: st.info("선택한 날짜에 동선 데이터가 없습니다.")
+    else: st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
 
 # ====================================================================
-# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (V3 - 요일 추가!)
+# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (조건부 동적 UI 적용!)
 # ====================================================================
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
@@ -310,74 +275,78 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
     with st.container(border=True):
         st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 세밀하게 입력해주세요</h4>", unsafe_allow_html=True)
         
-        # ⭐ 4개의 입력창을 2줄(2x2)로 보기 좋게 배치
+        # 첫 번째 줄: 날씨와 세부 요일
         row1_col1, row1_col2 = st.columns(2)
         with row1_col1:
             future_weather = st.selectbox("⛅ 1. 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
         with row1_col2:
             future_dayname = st.selectbox("📅 2. 세부 요일", ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", "Friday (금)", "Saturday (토)", "Sunday (일)"])
             
-        row2_col1, row2_col2 = st.columns(2)
+        # 두 번째 줄: 평일/주말/공휴일 선택
+        row2_col1, row2_col2, row2_col3 = st.columns(3)
         with row2_col1:
             future_daytype = st.selectbox("🎈 3. 평일/주말/공휴일 구분", ["Weekday (평일)", "Weekend (주말)", "Holiday (공휴일)"])
-        with row2_col2:
-            is_long = st.selectbox("🎒 4. 명절/긴 연휴 여부", ["일반적인 날 (Short)", "명절 등 긴 연휴 (Long)"])
+            
+        # 초기값 세팅
+        is_working_holiday = 0
+        is_weekend_holiday = 0
+        is_long = "Short"
+        
+        # ⭐ [조건부 렌더링 핵심 마법!] "Holiday"를 선택했을 때만 나타나는 2개의 창
+        if "Holiday" in future_daytype:
+            with row2_col2:
+                holiday_detail = st.selectbox("🎯 세부 공휴일 유형", ["평일 공휴일 (Working Holiday)", "주말 공휴일 (Weekend Holiday)"])
+                if "Working" in holiday_detail:
+                    is_working_holiday = 1
+                else:
+                    is_weekend_holiday = 1
+            with row2_col3:
+                is_long = st.selectbox("🎒 4. 명절/긴 연휴 여부", ["일반적인 공휴일 (Short)", "설/추석 등 긴 연휴 (Long)"])
             
         if st.button("🤖 AI 예측 및 그래프 생성하기", use_container_width=True):
             try:
-                # 깃허브에서 AI 모델 로드
                 ai_model = joblib.load("ai_forecaster.pkl")
                 features = joblib.load("ai_features.pkl")
                 
                 target_zones = ['라면', '채소/계란/과일', '주류', '장난감']
                 predictions = {}
                 
-                # 요일 매핑 딕셔너리
-                day_map = {
-                    "Monday (월)": "Monday", "Tuesday (화)": "Tuesday", "Wednesday (수)": "Wednesday",
-                    "Thursday (목)": "Thursday", "Friday (금)": "Friday", "Saturday (토)": "Saturday", "Sunday (일)": "Sunday"
-                }
+                day_map = {"Monday (월)": "Monday", "Tuesday (화)": "Tuesday", "Wednesday (수)": "Wednesday", "Thursday (목)": "Thursday", "Friday (금)": "Friday", "Saturday (토)": "Saturday", "Sunday (일)": "Sunday"}
                 
                 for zone in target_zones:
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
                     
-                    # 1. 롱홀리데이 여부 세팅
+                    # 데이터 입력 매핑
                     input_data['Is_Long_Holiday'] = 1 if "Long" in is_long else 0
+                    input_data['Is_Working_Holiday'] = is_working_holiday
+                    input_data['Is_Weekend_Holiday'] = is_weekend_holiday
                     
-                    # 2. 날씨 세팅
                     if "Sunny" in future_weather: input_data['Weather_Clean_Sunny'] = 1
                     elif "Cloudy" in future_weather: input_data['Weather_Clean_Cloudy'] = 1
                     elif "Rainy" in future_weather: input_data['Weather_Clean_Rainy'] = 1
                         
-                    # 3. 요일/휴일 세팅
                     if "Weekday" in future_daytype: input_data['DayType_Weekday'] = 1
                     elif "Weekend" in future_daytype: input_data['DayType_Weekend'] = 1
                     elif "Holiday" in future_daytype: input_data['DayType_Holiday'] = 1
                     
-                    # 4. 세부 요일 세팅 (추가된 기능!)
                     selected_day = day_map[future_dayname]
                     day_col = f"DayName_Clean_{selected_day}"
                     if day_col in input_data.columns:
                         input_data[day_col] = 1
                     
-                    # 5. 코너 세팅
                     zone_col = f"zone_{zone}"
                     if zone_col in input_data.columns:
                         input_data[zone_col] = 1
                         
-                    # AI 예측!
                     pred_traffic = ai_model.predict(input_data)[0]
                     predictions[zone] = pred_traffic
                 
                 st.success("AI 분석 완료! 아래 예측 브리핑과 트래픽 곡선을 확인하세요.")
                 
-                # ⭐ 예상 시간별 트래픽 곡선 그리기
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
-                    
-                    # 예측값의 총합을 기준으로 가상 곡선 볼륨 생성
                     total_predicted = sum(predictions.values()) * 2.5 
                     pred_curve = (hourly_ratio * total_predicted).reset_index()
                     pred_curve.columns = ['시간', '예상방문객']
@@ -399,27 +368,31 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 except Exception as e:
                     st.warning("시간대별 트래픽 데이터를 불러오는 데 실패하여 그래프를 생략합니다.")
 
-                # 브리핑 텍스트 출력
                 st.markdown("""
                 <div style="background-color: #F8FAFC; padding: 25px; border-radius: 15px; border-left: 5px solid #8B5CF6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                     <h3 style="color: #4C1D95; margin-top: 0;">📋 AI 매장 운영 브리핑</h3>
                 """, unsafe_allow_html=True)
                 
                 holiday_txt = ""
-                if "Long" in is_long: holiday_txt = "(명절/연휴)"
-                day_str = future_dayname.split()[1].replace('(', '').replace(')', '') # '월', '화' 추출
-                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{future_daytype.split()[0]} {holiday_txt} ({day_str}요일)** 입니다.<br><br>", unsafe_allow_html=True)
+                if "Holiday" in future_daytype:
+                    holiday_type_str = "평일" if is_working_holiday else "주말"
+                    holiday_txt = f"(공휴일[{holiday_type_str}] / {'명절 연휴' if 'Long' in is_long else '일반'})"
+                else:
+                    holiday_txt = f"({future_daytype.split()[0]})"
+                    
+                day_str = future_dayname.split()[1].replace('(', '').replace(')', '') 
+                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{day_str}요일 {holiday_txt}** 입니다.<br><br>", unsafe_allow_html=True)
                 
                 for zone, traffic in predictions.items():
                     if "Rainy" in future_weather and zone == '라면':
                         st.markdown(f"🍜 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
-                        st.markdown(f"👉 **AI 인사이트:** 비 오는 날 파전/국물 요리 수요 급증이 예상됩니다. 라면 및 부침가루 매대 재고를 1.5배 보충하고, 동선이 꼬이지 않게 주변 매대를 넓히세요.<br><br>", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 비 오는 날 국물 요리 수요 급증이 예상됩니다. 라면 재고를 보충하세요.<br><br>", unsafe_allow_html=True)
                     elif ("Holiday" in future_daytype or "Weekend" in future_daytype) and zone == '장난감':
                         st.markdown(f"🧸 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
-                        st.markdown(f"👉 **AI 인사이트:** 주말/휴일 가족 단위 방문객 증가로 트래픽 폭발이 예상됩니다. 장난감 코너 전담 직원을 1명 더 배치하세요.<br><br>", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 주말/휴일 가족 단위 방문객 증가로 트래픽 폭발이 예상됩니다. 전담 직원을 배치하세요.<br><br>", unsafe_allow_html=True)
                     elif "Long" in is_long and zone == '주류':
                         st.markdown(f"🍷 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
-                        st.markdown(f"👉 **AI 인사이트:** 긴 연휴를 맞아 가족 모임용 대용량 주류 및 프리미엄 와인 수요가 크게 뜁니다. 전면 매대에 주류 선물세트를 전진 배치하세요.<br><br>", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 명절 긴 연휴를 맞아 대용량 주류 및 와인 수요가 뜁니다. 선물세트를 전진 배치하세요.<br><br>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"🛒 **[{zone}] 코너 예상 방문객: {traffic:,.0f}명**<br><br>", unsafe_allow_html=True)
                 
@@ -456,8 +429,7 @@ elif menu == "🔄 AI 매대 시뮬레이터":
                             z_names = list(centers.keys())
                             dist_df = pd.DataFrame(np.zeros((len(z_names), len(z_names))), index=z_names, columns=z_names)
                             for z1 in z_names:
-                                for z2 in z_names:
-                                    dist_df.loc[z1, z2] = np.linalg.norm(centers[z1] - centers[z2]) if z1 != z2 else 1.0
+                                for z2 in z_names: dist_df.loc[z1, z2] = np.linalg.norm(centers[z1] - centers[z2]) if z1 != z2 else 1.0
                             return dist_df
 
                         transition_counts = df_all.groupby(['zone', 'next_zone']).size().unstack(fill_value=0)
