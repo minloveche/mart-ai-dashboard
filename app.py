@@ -90,6 +90,7 @@ def load_trajectory():
         except: pass
     return pd.concat(dfs, ignore_index=True) if dfs else None
 
+# ⭐ [업그레이드] 평일 / 휴일(주말) / 공휴일 3가지 자동 분류!
 @st.cache_data
 def load_weather():
     weather_dict = {}
@@ -97,17 +98,34 @@ def load_weather():
         try:
             df_w = pd.read_csv("Day_Weather_Enhanced.csv")
             for index, row in df_w.iterrows():
-                day_num = index + 1 
                 date_str = str(row['Date']).strip()
+                
+                # 날짜 문자열에서 날짜(예: 11)만 안전하게 추출
+                try: day_num = int(date_str.split('-')[-1])
+                except: day_num = index + 1 
+                
                 weather = str(row['Weather']).strip()
-                holiday_flag = str(row['Holiday']).strip().lower()
-                holiday = "🔴 휴일" if holiday_flag == 'yes' else "🟢 평일"
+                
+                # 엑셀 파일의 진실(?)을 파악하여 3단 분류
+                is_holiday = str(row['is_holiday']).strip().lower() == 'true'
+                is_weekend = str(row['is_weekend']).strip().lower() == 'true'
+                
+                if is_holiday:
+                    holiday_text = "🔴 공휴일"
+                elif is_weekend:
+                    holiday_text = "🟡 휴일(주말)"
+                else:
+                    holiday_text = "🟢 평일"
+                
+                # 날씨 아이콘 세팅
                 weather_lower = weather.lower()
                 if "rain" in weather_lower: icon = "🌧️"
                 elif "cloud" in weather_lower: icon = "☁️"
                 elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
                 else: icon = "🌤️"
-                weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday}]"
+                
+                # 최종 조합
+                weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday_text}]"
         except: pass
     return weather_dict
 
@@ -266,7 +284,7 @@ elif menu == "🔥 정밀 히트맵":
     else: st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
 
 # ====================================================================
-# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (V5 자동화/PrePost 적용)
+# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 
 # ====================================================================
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
@@ -275,7 +293,6 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
     with st.container(border=True):
         st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 입력해주세요 (자동계산 지원)</h4>", unsafe_allow_html=True)
         
-        # 1. 날씨 & 요일 선택
         row1_col1, row1_col2 = st.columns(2)
         with row1_col1:
             future_weather = st.selectbox("⛅ 1. 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
@@ -284,11 +301,9 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                                           ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", 
                                            "Friday (금)", "Saturday (토)", "Sunday (일)"])
             
-        # [핵심 로직 1] 사용자가 선택한 요일을 보고 주말/평일을 0.1초 만에 자동 계산!
         is_weekend = 1 if "Saturday" in future_dayname or "Sunday" in future_dayname else 0
         weekend_text = "주말" if is_weekend else "평일"
 
-        # 2. 공휴일 & 특수일 선택
         row2_col1, row2_col2, row2_col3 = st.columns(3)
         with row2_col1:
             future_holiday = st.selectbox(f"🎈 3. 공휴일 여부 (현재 {weekend_text})", ["No (공휴일 아님)", "Yes (공휴일 맞음)"])
@@ -319,11 +334,10 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
                     
-                    # [핵심 로직 2] AI에게 보낼 변수들을 자동 세팅
                     input_data['Is_Weekend'] = is_weekend
                     input_data['Is_Holiday'] = is_holiday
-                    input_data['Is_Working_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 0) else 0 # 요일에 따라 자동판별
-                    input_data['Is_Weekend_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 1) else 0 # 요일에 따라 자동판별
+                    input_data['Is_Working_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 0) else 0 
+                    input_data['Is_Weekend_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 1) else 0 
                     input_data['Is_Long_Holiday'] = is_long_holiday
                     input_data['Is_Pre_Holiday'] = is_pre_holiday
                     input_data['Is_Post_Holiday'] = is_post_holiday
