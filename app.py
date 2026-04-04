@@ -10,7 +10,7 @@ import re
 import glob
 import altair as alt
 import datetime
-import joblib # ⭐ 머신러닝 모델 로드를 위한 라이브러리 추가
+import joblib
 
 # --- [1. 기본 설정 및 한글 폰트] ---
 st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
@@ -23,7 +23,7 @@ else:
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# ⭐ [디자인 업그레이드!] 
+# ⭐ [디자인 스타일링]
 custom_css = """
 <style>
     .stApp { background-color: #F8FAFC; }
@@ -166,18 +166,16 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     except: return str(d)
 
-# --- [3. 사이드바 메뉴 (⭐ 2단 구조 적용)] ---
+# --- [3. 사이드바 메뉴 (2단 구조)] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
 
-# 1단계: 메인 카테고리 선택
 main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
-# 2단계: AI 어드바이저일 경우 서브 메뉴 열기
 if main_category == "🤖 AI 어드바이저":
-    st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) # 구분선 추가
+    st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
     sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "🔄 AI 매대 시뮬레이터"])
-    menu = sub_menu # 화면 출력을 위해 menu 변수에 대입
+    menu = sub_menu 
 else:
     menu = main_category
 
@@ -351,24 +349,27 @@ elif menu == "🔥 정밀 히트맵":
         st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
 
 # ====================================================================
-# [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑
+# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (V2 적용!)
 # ====================================================================
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
-    st.markdown("머신러닝(Random Forest) 모델이 내일의 날씨와 휴일 여부를 분석하여 최적의 매장 운영 방안을 제안합니다.")
+    st.markdown("머신러닝이 세밀한 날씨와 휴일 요인을 분석하여 예상 트래픽 그래프와 운영 방안을 제안합니다.")
     
     with st.container(border=True):
-        st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 입력해주세요</h4>", unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
+        st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 세밀하게 입력해주세요</h4>", unsafe_allow_html=True)
+        
+        # 세분화된 3단 입력 UI
+        col1, col2, col3 = st.columns(3)
         with col1:
-            future_weather = st.selectbox("내일 예상 날씨", ["☀️ 맑음/흐림", "🌧️ 비/눈"])
-            is_rain = 1 if "비" in future_weather else 0
+            future_weather = st.selectbox("⛅ 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
         with col2:
-            future_holiday = st.selectbox("내일 휴일 여부", ["🟢 평일", "🔴 주말/공휴일"])
-            is_holiday = 1 if "주말" in future_holiday or "공휴일" in future_holiday else 0
+            future_daytype = st.selectbox("📅 요일 구분", ["Weekday (평일)", "Weekend (주말)", "Holiday (공휴일)"])
+        with col3:
+            is_long = st.selectbox("🎒 명절/긴 연휴 여부", ["일반적인 날 (Short)", "명절 등 긴 연휴 (Long)"])
             
-        if st.button("🤖 AI 브리핑 생성하기", use_container_width=True):
+        if st.button("🤖 AI 예측 및 그래프 생성하기", use_container_width=True):
             try:
+                # 깃허브에서 AI 모델 로드
                 ai_model = joblib.load("ai_forecaster.pkl")
                 features = joblib.load("ai_features.pkl")
                 
@@ -378,42 +379,91 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 for zone in target_zones:
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
-                    input_data['Is_Holiday'] = is_holiday
-                    input_data['Is_Rain'] = is_rain
                     
+                    # 1. 롱홀리데이 여부 세팅
+                    input_data['Is_Long_Holiday'] = 1 if "Long" in is_long else 0
+                    
+                    # 2. 날씨 세팅
+                    if "Sunny" in future_weather: input_data['Weather_Clean_Sunny'] = 1
+                    elif "Cloudy" in future_weather: input_data['Weather_Clean_Cloudy'] = 1
+                    elif "Rainy" in future_weather: input_data['Weather_Clean_Rainy'] = 1
+                        
+                    # 3. 요일/휴일 세팅
+                    if "Weekday" in future_daytype: input_data['DayType_Weekday'] = 1
+                    elif "Weekend" in future_daytype: input_data['DayType_Weekend'] = 1
+                    elif "Holiday" in future_daytype: input_data['DayType_Holiday'] = 1
+                    
+                    # 4. 코너 세팅
                     zone_col = f"zone_{zone}"
                     if zone_col in input_data.columns:
                         input_data[zone_col] = 1
                         
+                    # AI 예측!
                     pred_traffic = ai_model.predict(input_data)[0]
                     predictions[zone] = pred_traffic
                 
-                st.success("AI 분석이 완료되었습니다!")
+                st.success("AI 분석 완료! 아래 예측 브리핑과 트래픽 곡선을 확인하세요.")
                 
+                # ⭐ 예상 시간별 트래픽 곡선 그리기
+                try:
+                    trend_df = pd.read_csv("time_trend_light.csv")
+                    # 기존 평균 시간대별 비율 계산
+                    hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
+                    
+                    # 예측값의 총합을 기준으로 가상 곡선 볼륨 생성
+                    total_predicted = sum(predictions.values()) * 2.5 
+                    pred_curve = (hourly_ratio * total_predicted).reset_index()
+                    pred_curve.columns = ['시간', '예상방문객']
+                    
+                    # 그래프 이쁘게 다듬기
+                    base_date = pd.to_datetime("2026-01-01")
+                    pred_curve['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['시간'])
+                    
+                    st.markdown("### 📈 내일의 예상 시간대별 트래픽 곡선")
+                    chart = alt.Chart(pred_curve).mark_area(
+                        interpolate='monotone', color='#8B5CF6', opacity=0.3
+                    ).encode(
+                        x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
+                        y=alt.Y('예상방문객:Q', title='매장 예상 동시 체류객 (명)', axis=alt.Axis(labelColor='#475569')),
+                        tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간'), alt.Tooltip('예상방문객:Q', format=',.0f', title='예상 방문객')]
+                    ) + alt.Chart(pred_curve).mark_line(
+                        interpolate='monotone', color='#6D28D9', strokeWidth=3
+                    ).encode(
+                        x=alt.X('시간:T'), y=alt.Y('예상방문객:Q')
+                    )
+                    st.altair_chart(chart.properties(height=250), use_container_width=True)
+                except Exception as e:
+                    st.warning("시간대별 트래픽 데이터를 불러오는 데 실패하여 그래프를 생략합니다.")
+
+                # 브리핑 텍스트 출력
                 st.markdown("""
                 <div style="background-color: #F8FAFC; padding: 25px; border-radius: 15px; border-left: 5px solid #8B5CF6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                     <h3 style="color: #4C1D95; margin-top: 0;">📋 AI 매장 운영 브리핑</h3>
                 """, unsafe_allow_html=True)
                 
-                weather_text = "비가 오는" if is_rain else "맑은"
-                holiday_text = "휴일" if is_holiday else "평일"
+                # 상황 요약
+                holiday_txt = ""
+                if "Long" in is_long: holiday_txt = "(명절/연휴)"
+                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{future_daytype.split()[0]} {holiday_txt}** 입니다.<br><br>", unsafe_allow_html=True)
                 
-                st.markdown(f"**상황 요약:** 내일은 {weather_text} {holiday_text}입니다.<br><br>", unsafe_allow_html=True)
-                
+                # 결과 출력
                 for zone, traffic in predictions.items():
-                    if is_rain and zone == '라면':
+                    if "Rainy" in future_weather and zone == '라면':
                         st.markdown(f"🍜 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
                         st.markdown(f"👉 **AI 인사이트:** 비 오는 날 파전/국물 요리 수요 급증이 예상됩니다. 라면 및 부침가루 매대 재고를 1.5배 보충하고, 동선이 꼬이지 않게 주변 매대를 넓히세요.<br><br>", unsafe_allow_html=True)
-                    elif is_holiday and zone == '장난감':
+                    elif ("Holiday" in future_daytype or "Weekend" in future_daytype) and zone == '장난감':
                         st.markdown(f"🧸 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
-                        st.markdown(f"👉 **AI 인사이트:** 휴일 가족 단위 방문객 증가로 트래픽 폭발이 예상됩니다. 장난감 코너 전담 직원을 1명 더 배치하세요.<br><br>", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 주말/휴일 가족 단위 방문객 증가로 트래픽 폭발이 예상됩니다. 장난감 코너 전담 직원을 1명 더 배치하세요.<br><br>", unsafe_allow_html=True)
+                    elif "Long" in is_long and zone == '주류':
+                        st.markdown(f"🍷 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
+                        st.markdown(f"👉 **AI 인사이트:** 긴 연휴를 맞아 가족 모임용 대용량 주류 및 프리미엄 와인 수요가 크게 뜁니다. 전면 매대에 주류 선물세트를 전진 배치하세요.<br><br>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"🛒 **[{zone}] 코너 예상 방문객: {traffic:,.0f}명**<br><br>", unsafe_allow_html=True)
                 
                 st.markdown("</div>", unsafe_allow_html=True)
                 
             except Exception as e:
-                st.error("⚠️ AI 모델 파일을 찾을 수 없거나 분석 중 오류가 발생했습니다. 'ai_forecaster.pkl' 파일이 깃허브에 있는지 확인해주세요.")
+                st.error(f"⚠️ AI 분석 중 오류가 발생했습니다. (사유: {e}) 새로 갱신된 'ai_forecaster.pkl' 파일이 깃허브에 잘 올라갔는지 확인해주세요!")
 
 # ====================================================================
 # [메뉴 3-2] AI 어드바이저 - 매대 시뮬레이터
