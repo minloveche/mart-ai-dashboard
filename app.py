@@ -45,7 +45,6 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# 구역(Zones) 좌표 데이터
 ZONES = {
     '행사(1)': {'x_min': 489, 'x_max': 528, 'y_min': 301, 'y_max': 374},
     '문구(1)': {'x_min': 528, 'x_max': 587, 'y_min': 303, 'y_max': 372},
@@ -79,7 +78,6 @@ ZONES = {
     '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
-# --- [2. 데이터 로드] ---
 @st.cache_data
 def load_all_sessions():
     files = glob.glob("Zone_Visit_Sessions*.*") + glob.glob("sessions_compressed.*")
@@ -140,23 +138,19 @@ df_traj = load_trajectory()
 weather_info = load_weather()
 
 def safe_date_match(val, target):
-    if '-' in str(val) and '-' in str(target):
-        return str(val).strip() == str(target).strip()
+    if '-' in str(val) and '-' in str(target): return str(val).strip() == str(target).strip()
     def get_day_num(x):
         nums = re.findall(r'\d+', str(x).split('.')[0])
         return int(nums[-1]) if nums else None
-    
     v1 = get_day_num(val)
     v2 = get_day_num(target)
-    if v1 is not None and v2 is not None:
-        return v1 == v2
+    if v1 is not None and v2 is not None: return v1 == v2
     return str(val).strip() == str(target).strip()
 
 def sort_date_smart(d):
     nums = re.findall(r'\d+', str(d))
     if not nums: return 99999999
-    if len(nums) >= 3:
-        return int(f"{nums[0]}{int(nums[1]):02d}{int(nums[2]):02d}")
+    if len(nums) >= 3: return int(f"{nums[0]}{int(nums[1]):02d}{int(nums[2]):02d}")
     return int(nums[-1])
 
 def format_date_option(d):
@@ -166,7 +160,6 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     except: return str(d)
 
-# --- [3. 사이드바 메뉴 (2단 구조)] ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
 
@@ -179,12 +172,8 @@ if main_category == "🤖 AI 어드바이저":
 else:
     menu = main_category
 
-# ====================================================================
-# [메뉴 1] 트래픽 요약
-# ====================================================================
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
-    
     st.markdown("""
     <div style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 30px; border-radius: 15px; border-left: 5px solid #3B82F6; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <h4 style="color: #1E3A8A; margin-top: 0;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h4>
@@ -219,7 +208,6 @@ if menu == "📊 트래픽 요약":
             st.markdown("### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)")
             try:
                 trend_df = pd.read_csv("time_trend_light.csv")
-                
                 if selected_date == "전체 누적 보기":
                     plot_data = trend_df.groupby('time_str')['visitors'].sum().reset_index()
                     y_title = '총 누적 방문객 수 (명)'
@@ -230,7 +218,6 @@ if menu == "📊 트래픽 요약":
                 if not plot_data.empty:
                     base_date = pd.to_datetime("2026-01-01")
                     plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
-                    
                     chart = alt.Chart(plot_data).mark_area(
                         interpolate='monotone', color='#93C5FD', opacity=0.4
                     ).encode(
@@ -239,15 +226,11 @@ if menu == "📊 트래픽 요약":
                         tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
                     ) + alt.Chart(plot_data).mark_line(
                         interpolate='monotone', color='#3B82F6', strokeWidth=3
-                    ).encode(
-                        x=alt.X('시간:T'),
-                        y=alt.Y('visitors:Q')
-                    )
+                    ).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
                     st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
                 else:
                     st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"그래프 생성 중 오류: {e}")
+            except: st.error("그래프 생성 중 오류가 발생했습니다.")
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 🏆 구역별 전체 방문 횟수")
@@ -259,25 +242,13 @@ if menu == "📊 트래픽 요약":
                 color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
                 tooltip=['구역', '방문횟수']
             )
-            text = bars.mark_text(
-                align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B'
-            ).encode(text=alt.Text('방문횟수:Q', format=','))
-            
-            final_chart = (bars + text).properties(height=alt.Step(35))
-            st.altair_chart(final_chart, use_container_width=True)
-            
-        else:
-            st.info("데이터가 없습니다.")
-    else:
-        st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
+            text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=','))
+            st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
+        else: st.info("데이터가 없습니다.")
 
-# ====================================================================
-# [메뉴 2] 정밀 히트맵
-# ====================================================================
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
     st.markdown("특정 시간을 선택하여 그 순간 사람들의 동선이 어떻게 분포되어 있는지 **스냅샷**으로 확인하세요.")
-    
     if df_traj is not None and 'date' in df_traj.columns:
         available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
@@ -292,27 +263,15 @@ elif menu == "🔥 정밀 히트맵":
 
         if not filtered_traj.empty:
             col1, col2 = st.columns([1, 3])
-            
             with col1:
                 with st.container(border=True):
                     st.markdown("<h4 style='color: #1E293B; margin-top:0; font-size:18px;'>🎛️ 히트맵 컨트롤러</h4>", unsafe_allow_html=True)
-                    
-                    selected_time = st.slider(
-                        "⏰ 특정 시간 스냅샷 보기",
-                        min_value=datetime.time(9, 0),  
-                        max_value=datetime.time(22, 50),
-                        value=datetime.time(15, 0), 
-                        step=datetime.timedelta(minutes=10),
-                        format="HH:mm"
-                    )
-                    
+                    selected_time = st.slider("⏰ 특정 시간 스냅샷 보기", min_value=datetime.time(9, 0), max_value=datetime.time(22, 50), value=datetime.time(15, 0), step=datetime.timedelta(minutes=10), format="HH:mm")
                     end_time = (datetime.datetime.combine(datetime.date.today(), selected_time) + datetime.timedelta(minutes=10)).time()
                     st.markdown(f"<p style='color:#2563EB; font-weight:bold; font-size:14px; text-align:center; background-color:#EFF6FF; padding:5px; border-radius:5px;'>📸 찰칵! [{selected_time.strftime('%H:%M')} ~ {end_time.strftime('%H:%M')}]</p>", unsafe_allow_html=True)
-                    
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
                     blur_sigma = st.slider("구름 퍼짐 정도 (Sigma)", 1.0, 10.0, 4.0, step=0.5)
                     red_sens = st.slider("붉은색 민감도 (%)", 1, 50, 15, step=1)
-                
             with col2:
                 fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
                 img_path = 'map_image.jpg'
@@ -323,7 +282,6 @@ elif menu == "🔥 정밀 히트맵":
                     ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
 
                 df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
-                
                 if 'time_index' in df_exact.columns and not df_exact.empty:
                     time_idx = pd.to_numeric(df_exact['time_index'], errors='coerce').fillna(0)
                     total_secs = (time_idx * 10) % 86400
@@ -337,35 +295,33 @@ elif menu == "🔥 정밀 히트맵":
                     if max_val > 0:
                         red_threshold = max_val * (red_sens / 100.0)
                         vmin_level = max_val * 0.01
-                        im = ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, 
-                                       zorder=3, interpolation='bilinear', vmin=vmin_level, vmax=red_threshold)
+                        im = ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, interpolation='bilinear', vmin=vmin_level, vmax=red_threshold)
                     ax.axis('off')
                     st.pyplot(fig)
-                else:
-                    st.warning("⚠️ 선택하신 스냅샷 시간대에는 고객 동선 데이터가 없습니다.")
-        else:
-            st.info("선택한 날짜에 동선 데이터가 없습니다.")
-    else:
-        st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
+                else: st.warning("⚠️ 선택하신 스냅샷 시간대에는 고객 동선 데이터가 없습니다.")
 
 # ====================================================================
-# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (V2 적용!)
+# ⭐ [메뉴 3-1] AI 어드바이저 - 내일의 예측 브리핑 (V3 - 요일 추가!)
 # ====================================================================
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
-    st.markdown("머신러닝이 세밀한 날씨와 휴일 요인을 분석하여 예상 트래픽 그래프와 운영 방안을 제안합니다.")
+    st.markdown("머신러닝이 세밀한 **날씨, 요일, 휴일 요인**을 종합 분석하여 트래픽 곡선과 맞춤형 운영 방안을 제안합니다.")
     
     with st.container(border=True):
         st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 세밀하게 입력해주세요</h4>", unsafe_allow_html=True)
         
-        # 세분화된 3단 입력 UI
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            future_weather = st.selectbox("⛅ 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
-        with col2:
-            future_daytype = st.selectbox("📅 요일 구분", ["Weekday (평일)", "Weekend (주말)", "Holiday (공휴일)"])
-        with col3:
-            is_long = st.selectbox("🎒 명절/긴 연휴 여부", ["일반적인 날 (Short)", "명절 등 긴 연휴 (Long)"])
+        # ⭐ 4개의 입력창을 2줄(2x2)로 보기 좋게 배치
+        row1_col1, row1_col2 = st.columns(2)
+        with row1_col1:
+            future_weather = st.selectbox("⛅ 1. 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
+        with row1_col2:
+            future_dayname = st.selectbox("📅 2. 세부 요일", ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", "Friday (금)", "Saturday (토)", "Sunday (일)"])
+            
+        row2_col1, row2_col2 = st.columns(2)
+        with row2_col1:
+            future_daytype = st.selectbox("🎈 3. 평일/주말/공휴일 구분", ["Weekday (평일)", "Weekend (주말)", "Holiday (공휴일)"])
+        with row2_col2:
+            is_long = st.selectbox("🎒 4. 명절/긴 연휴 여부", ["일반적인 날 (Short)", "명절 등 긴 연휴 (Long)"])
             
         if st.button("🤖 AI 예측 및 그래프 생성하기", use_container_width=True):
             try:
@@ -375,6 +331,12 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 
                 target_zones = ['라면', '채소/계란/과일', '주류', '장난감']
                 predictions = {}
+                
+                # 요일 매핑 딕셔너리
+                day_map = {
+                    "Monday (월)": "Monday", "Tuesday (화)": "Tuesday", "Wednesday (수)": "Wednesday",
+                    "Thursday (목)": "Thursday", "Friday (금)": "Friday", "Saturday (토)": "Saturday", "Sunday (일)": "Sunday"
+                }
                 
                 for zone in target_zones:
                     input_data = pd.DataFrame(columns=features)
@@ -393,7 +355,13 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                     elif "Weekend" in future_daytype: input_data['DayType_Weekend'] = 1
                     elif "Holiday" in future_daytype: input_data['DayType_Holiday'] = 1
                     
-                    # 4. 코너 세팅
+                    # 4. 세부 요일 세팅 (추가된 기능!)
+                    selected_day = day_map[future_dayname]
+                    day_col = f"DayName_Clean_{selected_day}"
+                    if day_col in input_data.columns:
+                        input_data[day_col] = 1
+                    
+                    # 5. 코너 세팅
                     zone_col = f"zone_{zone}"
                     if zone_col in input_data.columns:
                         input_data[zone_col] = 1
@@ -407,7 +375,6 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 # ⭐ 예상 시간별 트래픽 곡선 그리기
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
-                    # 기존 평균 시간대별 비율 계산
                     hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
                     
                     # 예측값의 총합을 기준으로 가상 곡선 볼륨 생성
@@ -415,7 +382,6 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                     pred_curve = (hourly_ratio * total_predicted).reset_index()
                     pred_curve.columns = ['시간', '예상방문객']
                     
-                    # 그래프 이쁘게 다듬기
                     base_date = pd.to_datetime("2026-01-01")
                     pred_curve['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['시간'])
                     
@@ -428,9 +394,7 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                         tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간'), alt.Tooltip('예상방문객:Q', format=',.0f', title='예상 방문객')]
                     ) + alt.Chart(pred_curve).mark_line(
                         interpolate='monotone', color='#6D28D9', strokeWidth=3
-                    ).encode(
-                        x=alt.X('시간:T'), y=alt.Y('예상방문객:Q')
-                    )
+                    ).encode(x=alt.X('시간:T'), y=alt.Y('예상방문객:Q'))
                     st.altair_chart(chart.properties(height=250), use_container_width=True)
                 except Exception as e:
                     st.warning("시간대별 트래픽 데이터를 불러오는 데 실패하여 그래프를 생략합니다.")
@@ -441,12 +405,11 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                     <h3 style="color: #4C1D95; margin-top: 0;">📋 AI 매장 운영 브리핑</h3>
                 """, unsafe_allow_html=True)
                 
-                # 상황 요약
                 holiday_txt = ""
                 if "Long" in is_long: holiday_txt = "(명절/연휴)"
-                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{future_daytype.split()[0]} {holiday_txt}** 입니다.<br><br>", unsafe_allow_html=True)
+                day_str = future_dayname.split()[1].replace('(', '').replace(')', '') # '월', '화' 추출
+                st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{future_daytype.split()[0]} {holiday_txt} ({day_str}요일)** 입니다.<br><br>", unsafe_allow_html=True)
                 
-                # 결과 출력
                 for zone, traffic in predictions.items():
                     if "Rainy" in future_weather and zone == '라면':
                         st.markdown(f"🍜 **[{zone}] 코너 예상 방문객: <span style='color:red; font-size:20px;'>{traffic:,.0f}명</span>**", unsafe_allow_html=True)
@@ -488,9 +451,7 @@ elif menu == "🔄 AI 매대 시뮬레이터":
                     st.warning("서로 다른 두 매대를 선택해 주세요.")
                 else:
                     with st.spinner("AI가 고객 이동 의도(Intent)를 계산 중입니다..."):
-                        def get_centers(z_dict):
-                            return {z: np.array([(c['x_min']+c['x_max'])/2, (c['y_min']+c['y_max'])/2]) for z, c in z_dict.items()}
-                        
+                        def get_centers(z_dict): return {z: np.array([(c['x_min']+c['x_max'])/2, (c['y_min']+c['y_max'])/2]) for z, c in z_dict.items()}
                         def calc_dist(centers):
                             z_names = list(centers.keys())
                             dist_df = pd.DataFrame(np.zeros((len(z_names), len(z_names))), index=z_names, columns=z_names)
@@ -502,16 +463,13 @@ elif menu == "🔄 AI 매대 시뮬레이터":
                         transition_counts = df_all.groupby(['zone', 'next_zone']).size().unstack(fill_value=0)
                         current_prob = transition_counts.div(transition_counts.sum(axis=1), axis=0).fillna(0)
                         current_traffic = df_all['zone'].value_counts()
-                        
                         cur_centers = get_centers(ZONES)
                         cur_dist = calc_dist(cur_centers)
-                        
                         common_zones = current_prob.index.intersection(cur_dist.index)
                         intent_matrix = current_prob.loc[common_zones, common_zones] * (cur_dist.loc[common_zones, common_zones] ** 2)
                         
                         new_zones = ZONES.copy()
                         new_zones[zone_A], new_zones[zone_B] = new_zones[zone_B], new_zones[zone_A]
-                        
                         new_centers = get_centers(new_zones)
                         new_dist = calc_dist(new_centers)
                         
@@ -535,8 +493,7 @@ elif menu == "🔄 AI 매대 시뮬레이터":
                         new_b = pred_traffic.get(zone_B, 0)
                         delta_b = new_b - old_b
                         res_col2.metric(f"[{zone_B}] 코너 예측 방문객", f"{new_b:,.0f}명", f"{delta_b:,.0f}명 ({(delta_b/old_b)*100:.1f}%)")
-    else:
-         st.error("데이터 파일이 필요합니다.")
+    else: st.error("데이터 파일이 필요합니다.")
 
 # ====================================================================
 # [메뉴 4] 센서(Sward) 위치 확인
@@ -544,14 +501,11 @@ elif menu == "🔄 AI 매대 시뮬레이터":
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
     st.markdown("현재 마트에 설치된 센서 장비들의 위치와 구역 정보를 지도 위에서 확인합니다.")
-    
     col1, col2 = st.columns([1, 3])
-    
     with col1:
         with st.container(border=True):
             st.markdown("<h4 style='color: #047857; margin-top:0;'>💡 센서 연동 데이터</h4>", unsafe_allow_html=True)
             st.markdown("<p style='color: #475569; font-size: 14px; margin-bottom:0;'><code>swards (1).csv</code> 파일의 좌표를 기반으로 매장 지도 위에 실시간 매핑됩니다. 향후 센서가 추가/이동될 경우 CSV 파일만 교체하면 즉시 반영됩니다.</p>", unsafe_allow_html=True)
-    
     with col2:
         try:
             sward_df = pd.read_csv('swards (1).csv')
@@ -563,20 +517,10 @@ elif menu == "📍 센서(Sward) 위치":
             else:
                 st.warning(f"지도 이미지('{img_path}')를 찾을 수 없습니다.")
                 ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-            
             ax.scatter(sward_df['x'], sward_df['y'], color='#EF4444', s=55, edgecolors='white', linewidth=2, zorder=2)
-            
             for idx, row in sward_df.iterrows():
-                ax.annotate(str(row['description']), 
-                            (row['x'], row['y']), 
-                            xytext=(5, 5), textcoords='offset points', 
-                            fontsize=8, color='#1E3A8A', weight='bold', zorder=3,
-                            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none", alpha=0.7))
-                
+                ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8, color='#1E3A8A', weight='bold', zorder=3, bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none", alpha=0.7))
             ax.axis('off')
             st.pyplot(fig)
-            
-        except FileNotFoundError:
-            st.error("⚠️ 'swards (1).csv' 파일을 찾을 수 없습니다.")
-        except Exception as e:
-            st.error(f"오류가 발생했습니다: {e}")
+        except FileNotFoundError: st.error("⚠️ 'swards (1).csv' 파일을 찾을 수 없습니다.")
+        except Exception as e: st.error(f"오류가 발생했습니다: {e}")
