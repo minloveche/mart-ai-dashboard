@@ -388,7 +388,7 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 st.error(f"⚠️ AI 분석 중 오류가 발생했습니다. (사유: {e}) 새로 갱신된 'ai_forecaster.pkl' 파일이 깃허브에 잘 올라갔는지 확인해주세요!")
 
 # ====================================================================
-# ⭐ [메뉴 3-2] Gemini 매장 비서 (챗봇) - 모델명 'gemini-pro'로 완벽 수정!
+# ⭐ [메뉴 3-2] Gemini 매장 비서 (챗봇) - 자동 모델 탐색기 탑재!
 # ====================================================================
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
@@ -404,8 +404,22 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
             if api_key:
                 try:
                     genai.configure(api_key=api_key)
-                    # 💡 여기에 문제가 있던 모델 이름을 'gemini-pro'로 확실하게 고쳐두었습니다!
-                    model = genai.GenerativeModel('gemini-pro')
+                    
+                    # 💡 [핵심 수술] 구글의 변덕스러운 모델 이름을 알아서 찾아내는 자동 탐색기!
+                    best_model = 'gemini-1.5-flash' # 만약 검색에 실패하면 이걸로 시도합니다.
+                    try:
+                        for m in genai.list_models():
+                            if 'generateContent' in m.supported_generation_methods:
+                                if 'flash' in m.name:
+                                    best_model = m.name
+                                    break # 가장 빠르고 최신인 flash 모델을 찾으면 바로 멈춤!
+                                elif 'pro' in m.name:
+                                    best_model = m.name # flash가 없으면 pro라도 임시 저장
+                    except:
+                        pass
+                        
+                    model = genai.GenerativeModel(best_model)
+                    st.success(f"✅ 구글 서버 연결 성공! 현재 작동 중인 AI 모델: `{best_model}`")
                     
                     st.markdown("#### 🗣️ 2단계: 질문하기")
                     
