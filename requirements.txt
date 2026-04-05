@@ -8,3 +8,4 @@ scikit-learn
 joblib
 pyarrow
 fastparquet
+google-generativeai
