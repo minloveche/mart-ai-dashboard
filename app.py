@@ -12,17 +12,22 @@ import altair as alt
 import datetime
 import joblib
 
+# ⭐ [추가됨] 제미나이 인공지능 라이브러리
 try:
     import google.generativeai as genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
 
+# --- [1. 기본 설정 및 한글 폰트] ---
 st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
 
-if platform.system() == 'Windows': plt.rc('font', family='Malgun Gothic')
-elif platform.system() == 'Darwin': plt.rc('font', family='AppleGothic')
-else: plt.rc('font', family='NanumGothic')
+if platform.system() == 'Windows':
+    plt.rc('font', family='Malgun Gothic')
+elif platform.system() == 'Darwin':
+    plt.rc('font', family='AppleGothic')
+else:
+    plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
 custom_css = """
@@ -74,8 +79,6 @@ def load_all_sessions():
             dfs.append(df)
         except: pass
     return pd.concat(dfs, ignore_index=True) if dfs else None
-
-# ⭐ [메모리 수술] load_trajectory() 함수 삭제! 한 번에 다 불러오지 않습니다.
 
 @st.cache_data
 def load_weather():
@@ -135,6 +138,7 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", widt
 st.sidebar.title("마트 AI 대시보드")
 main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
+# ⭐ 챗봇 메뉴 추가!
 if main_category == "🤖 AI 어드바이저":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
     sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "💬 Gemini 매장 비서 (챗봇)"])
@@ -206,20 +210,17 @@ if menu == "📊 트래픽 요약":
         else: st.info("데이터가 없습니다.")
     else: st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
 
-# ⭐ [메모리 수술] 히트맵은 선택한 날짜 '딱 하루치' 파일만 가볍게 열어서 처리합니다!
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
     st.markdown("특정 시간을 선택하여 그 순간 사람들의 동선이 어떻게 분포되어 있는지 **스냅샷**으로 확인하세요.")
     
     if df_all is not None and 'date' in df_all.columns:
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
-        # 전체 누적 보기는 동선 데이터에서 메모리를 초과하므로 선택지에서 뺐습니다!
         selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", available_dates, key="heatmap_date", format_func=format_date_option)
         
         display_title = format_date_option(selected_date)
         st.markdown(f"### 📈 {display_title} 동선 히트맵")
         
-        # 사용자가 선택한 날짜의 파일만 딱 1개 찾아서 엽니다.
         filtered_traj = pd.DataFrame()
         target_files = glob.glob(f"*{selected_date}*")
         traj_files = [f for f in target_files if 'trajectory' in f.lower() or 'real_users_trajectory' in f.lower()]
@@ -266,7 +267,7 @@ elif menu == "🔥 정밀 히트맵":
                     ax.axis('off')
                     st.pyplot(fig)
                 else: st.warning("⚠️ 선택하신 스냅샷 시간대에는 고객 동선 데이터가 없습니다.")
-        else: st.info(f"⚠️ {selected_date}의 동선 데이터 파일을 깃허브에서 찾을 수 없습니다. (파일명: trajectory_light_{selected_date}.parquet)")
+        else: st.info(f"⚠️ {selected_date}의 동선 데이터 파일을 깃허브에서 찾을 수 없습니다.")
     else: st.error("데이터 파일에 날짜 정보가 없습니다.")
 
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
@@ -386,12 +387,15 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except Exception as e:
                 st.error(f"⚠️ AI 분석 중 오류가 발생했습니다. (사유: {e}) 새로 갱신된 'ai_forecaster.pkl' 파일이 깃허브에 잘 올라갔는지 확인해주세요!")
 
+# ====================================================================
+# ⭐ [메뉴 3-2] Gemini 매장 비서 (챗봇) - 모델명 'gemini-pro'로 완벽 수정!
+# ====================================================================
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
     st.markdown("점장님, 매장 트래픽이나 운영 전략에 대해 무엇이든 물어보세요! (예: *내일 비가 오는데 어떤 매대가 인기가 많을까?*)")
 
     if not HAS_GENAI:
-        st.error("⚠️ `google-generativeai` 라이브러리가 설치되지 않았습니다. 깃허브의 `requirements.txt` 파일에 `google-generativeai`가 있는지 확인해주세요.")
+        st.error("⚠️ `google-generativeai` 라이브러리가 설치되지 않았습니다. 깃허브의 `requirements.txt` 파일에 `google-generativeai`가 정확히 적혀있는지 확인해주세요.")
     else:
         with st.container(border=True):
             st.markdown("#### 🔑 1단계: API 키 입력")
@@ -400,18 +404,21 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
             if api_key:
                 try:
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    # 💡 여기에 문제가 있던 모델 이름을 'gemini-pro'로 확실하게 고쳐두었습니다!
+                    model = genai.GenerativeModel('gemini-pro')
                     
                     st.markdown("#### 🗣️ 2단계: 질문하기")
                     
                     if "chat_history" not in st.session_state:
                         st.session_state.chat_history = []
 
+                    # 이전 대화 불러오기
                     for msg in st.session_state.chat_history:
                         with st.chat_message(msg["role"]):
                             st.markdown(msg["content"])
 
-                    if prompt := st.chat_input("질문을 입력하세요... (예: 내일 비가 오는데, 라면 코너 재고를 얼마나 늘릴까?)"):
+                    # 채팅창 입력
+                    if prompt := st.chat_input("질문을 입력하세요... (예: 공휴일 다음 날엔 신선식품 코너를 어떻게 운영해야 할까?)"):
                         st.session_state.chat_history.append({"role": "user", "content": prompt})
                         with st.chat_message("user"):
                             st.markdown(prompt)
@@ -424,6 +431,7 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
                         질문: 
                         """
                         
+                        # AI 답변 생성
                         with st.chat_message("assistant"):
                             with st.spinner("점장님의 질문을 분석 중입니다..."):
                                 response = model.generate_content(system_context + prompt)
