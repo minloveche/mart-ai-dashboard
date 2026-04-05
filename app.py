@@ -138,7 +138,6 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", widt
 st.sidebar.title("마트 AI 대시보드")
 main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
-# ⭐ 챗봇 메뉴 추가!
 if main_category == "🤖 AI 어드바이저":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
     sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "💬 Gemini 매장 비서 (챗봇)"])
@@ -388,7 +387,7 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 st.error(f"⚠️ AI 분석 중 오류가 발생했습니다. (사유: {e}) 새로 갱신된 'ai_forecaster.pkl' 파일이 깃허브에 잘 올라갔는지 확인해주세요!")
 
 # ====================================================================
-# ⭐ [메뉴 3-2] Gemini 매장 비서 (챗봇) - 자동 모델 탐색기 탑재!
+# ⭐ [메뉴 3-2] Gemini 매장 비서 (챗봇) - 자동 로그인 적용!
 # ====================================================================
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
@@ -398,61 +397,58 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
         st.error("⚠️ `google-generativeai` 라이브러리가 설치되지 않았습니다. 깃허브의 `requirements.txt` 파일에 `google-generativeai`가 정확히 적혀있는지 확인해주세요.")
     else:
         with st.container(border=True):
-            st.markdown("#### 🔑 1단계: API 키 입력")
-            api_key = st.text_input("Google AI Studio에서 발급받은 Gemini API Key를 입력해주세요.", type="password", help="키는 저장되지 않으며 현재 세션에서만 사용됩니다.")
-            
-            if api_key:
+            try:
+                # ⭐ 이제 매번 묻지 않고, 스트림릿 서버의 '비밀 금고(Secrets)'에서 키를 몰래 꺼내옵니다!
+                api_key = st.secrets["GEMINI_API_KEY"]
+                genai.configure(api_key=api_key)
+                
+                best_model = 'gemini-1.5-flash'
                 try:
-                    genai.configure(api_key=api_key)
+                    for m in genai.list_models():
+                        if 'generateContent' in m.supported_generation_methods:
+                            if 'flash' in m.name:
+                                best_model = m.name
+                                break
+                            elif 'pro' in m.name:
+                                best_model = m.name
+                except:
+                    pass
                     
-                    # 💡 [핵심 수술] 구글의 변덕스러운 모델 이름을 알아서 찾아내는 자동 탐색기!
-                    best_model = 'gemini-1.5-flash' # 만약 검색에 실패하면 이걸로 시도합니다.
-                    try:
-                        for m in genai.list_models():
-                            if 'generateContent' in m.supported_generation_methods:
-                                if 'flash' in m.name:
-                                    best_model = m.name
-                                    break # 가장 빠르고 최신인 flash 모델을 찾으면 바로 멈춤!
-                                elif 'pro' in m.name:
-                                    best_model = m.name # flash가 없으면 pro라도 임시 저장
-                    except:
-                        pass
-                        
-                    model = genai.GenerativeModel(best_model)
-                    st.success(f"✅ 구글 서버 연결 성공! 현재 작동 중인 AI 모델: `{best_model}`")
+                model = genai.GenerativeModel(best_model)
+                st.success(f"✅ 구글 서버 자동 연결 성공! (작동 모델: `{best_model}`)")
+                
+                st.markdown("#### 🗣️ 챗봇에게 질문하기")
+                
+                if "chat_history" not in st.session_state:
+                    st.session_state.chat_history = []
+
+                for msg in st.session_state.chat_history:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+
+                if prompt := st.chat_input("질문을 입력하세요... (예: 공휴일 다음 날엔 신선식품 코너를 어떻게 운영해야 할까?)"):
+                    st.session_state.chat_history.append({"role": "user", "content": prompt})
+                    with st.chat_message("user"):
+                        st.markdown(prompt)
+
+                    system_context = """
+                    당신은 대형 마트의 똑똑한 AI 점장 비서(Gemini)입니다.
+                    사용자(점장님)가 매장 운영, 트래픽 예측, 날씨에 따른 마케팅, 재고 관리 등에 대해 질문하면,
+                    친절하고 전문적이며 데이터에 기반한 조언을 제공합니다.
+                    답변은 3~4문장으로 너무 길지 않게, 핵심만 짚어서 마크다운(가독성 좋게)으로 작성해주세요.
+                    질문: 
+                    """
                     
-                    st.markdown("#### 🗣️ 2단계: 질문하기")
-                    
-                    if "chat_history" not in st.session_state:
-                        st.session_state.chat_history = []
-
-                    # 이전 대화 불러오기
-                    for msg in st.session_state.chat_history:
-                        with st.chat_message(msg["role"]):
-                            st.markdown(msg["content"])
-
-                    # 채팅창 입력
-                    if prompt := st.chat_input("질문을 입력하세요... (예: 공휴일 다음 날엔 신선식품 코너를 어떻게 운영해야 할까?)"):
-                        st.session_state.chat_history.append({"role": "user", "content": prompt})
-                        with st.chat_message("user"):
-                            st.markdown(prompt)
-
-                        system_context = """
-                        당신은 대형 마트의 똑똑한 AI 점장 비서(Gemini)입니다.
-                        사용자(점장님)가 매장 운영, 트래픽 예측, 날씨에 따른 마케팅, 재고 관리 등에 대해 질문하면,
-                        친절하고 전문적이며 데이터에 기반한 조언을 제공합니다.
-                        답변은 3~4문장으로 너무 길지 않게, 핵심만 짚어서 마크다운(가독성 좋게)으로 작성해주세요.
-                        질문: 
-                        """
-                        
-                        # AI 답변 생성
-                        with st.chat_message("assistant"):
-                            with st.spinner("점장님의 질문을 분석 중입니다..."):
-                                response = model.generate_content(system_context + prompt)
-                                st.markdown(response.text)
-                                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-                except Exception as e:
-                    st.error(f"API 키가 잘못되었거나 오류가 발생했습니다: {e}")
+                    with st.chat_message("assistant"):
+                        with st.spinner("점장님의 질문을 분석 중입니다..."):
+                            response = model.generate_content(system_context + prompt)
+                            st.markdown(response.text)
+                            st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                            
+            except KeyError:
+                st.error("⚠️ 비밀 금고에 API 키가 없습니다! 대시보드 우측 하단 [Manage app] -> [Settings] -> [Secrets]에 `GEMINI_API_KEY = \"내_키\"`를 먼저 등록해주세요.")
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
 
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
