@@ -12,15 +12,17 @@ import altair as alt
 import datetime
 import joblib
 
-# --- [1. 기본 설정 및 한글 폰트] ---
+try:
+    import google.generativeai as genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
+
 st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
 
-if platform.system() == 'Windows':
-    plt.rc('font', family='Malgun Gothic')
-elif platform.system() == 'Darwin':
-    plt.rc('font', family='AppleGothic')
-else:
-    plt.rc('font', family='NanumGothic')
+if platform.system() == 'Windows': plt.rc('font', family='Malgun Gothic')
+elif platform.system() == 'Darwin': plt.rc('font', family='AppleGothic')
+else: plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
 custom_css = """
@@ -73,22 +75,7 @@ def load_all_sessions():
         except: pass
     return pd.concat(dfs, ignore_index=True) if dfs else None
 
-@st.cache_data
-def load_trajectory():
-    files = glob.glob("Real_Users_Trajectory*.*") + glob.glob("trajectory_*.*")
-    files = [f for f in files if f.endswith('.parquet') or f.endswith('.csv')]
-    if not files: return None
-    dfs = []
-    for f in files:
-        try:
-            df = pd.read_parquet(f) if f.endswith('.parquet') else pd.read_csv(f)
-            match = re.search(r'(\d{4})[-_](\d{1,2})[-_](\d{1,2})', f)
-            if match:
-                y, m, d = match.groups()
-                df['date'] = f"{y}-{int(m):02d}-{int(d):02d}"
-            dfs.append(df)
-        except: pass
-    return pd.concat(dfs, ignore_index=True) if dfs else None
+# ⭐ [메모리 수술] load_trajectory() 함수 삭제! 한 번에 다 불러오지 않습니다.
 
 @st.cache_data
 def load_weather():
@@ -98,7 +85,6 @@ def load_weather():
             df_w = pd.read_csv("Day_Weather_Enhanced.csv")
             for index, row in df_w.iterrows():
                 date_str = str(row['Date']).strip()
-                
                 try: day_num = int(date_str.split('-')[-1])
                 except: day_num = index + 1 
                 
@@ -106,25 +92,20 @@ def load_weather():
                 is_holiday = str(row['is_holiday']).strip().lower() == 'true'
                 is_weekend = str(row['is_weekend']).strip().lower() == 'true'
                 
-                if is_holiday:
-                    holiday_text = "🔴 공휴일"
-                elif is_weekend:
-                    holiday_text = "🟡 휴일(주말)"
-                else:
-                    holiday_text = "🟢 평일"
+                if is_holiday: holiday_text = "🔴 공휴일"
+                elif is_weekend: holiday_text = "🟡 휴일(주말)"
+                else: holiday_text = "🟢 평일"
                 
                 weather_lower = weather.lower()
                 if "rain" in weather_lower: icon = "🌧️"
                 elif "cloud" in weather_lower: icon = "☁️"
                 elif "sun" in weather_lower or "clear" in weather_lower: icon = "☀️"
                 else: icon = "🌤️"
-                
                 weather_dict[day_num] = f"{date_str} [{icon} {weather} | {holiday_text}]"
         except: pass
     return weather_dict
 
 df_all = load_all_sessions()
-df_traj = load_trajectory()
 weather_info = load_weather()
 
 def safe_date_match(val, target):
@@ -154,10 +135,9 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", widt
 st.sidebar.title("마트 AI 대시보드")
 main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
-# ⭐ 시뮬레이터 메뉴가 안정성을 위해 제거되었습니다.
 if main_category == "🤖 AI 어드바이저":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
-    sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑"])
+    sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "💬 Gemini 매장 비서 (챗봇)"])
     menu = sub_menu 
 else:
     menu = main_category
@@ -226,19 +206,30 @@ if menu == "📊 트래픽 요약":
         else: st.info("데이터가 없습니다.")
     else: st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
 
+# ⭐ [메모리 수술] 히트맵은 선택한 날짜 '딱 하루치' 파일만 가볍게 열어서 처리합니다!
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
     st.markdown("특정 시간을 선택하여 그 순간 사람들의 동선이 어떻게 분포되어 있는지 **스냅샷**으로 확인하세요.")
-    if df_traj is not None and 'date' in df_traj.columns:
-        available_dates = sorted(df_traj['date'].unique().tolist(), key=sort_date_smart)
-        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, key="heatmap_date", format_func=format_date_option)
-        if selected_date == "전체 누적 보기":
-            filtered_traj = df_traj
-            st.markdown("### 📈 전체 누적 동선 히트맵")
-        else:
-            filtered_traj = df_traj[df_traj['date'].apply(lambda x: safe_date_match(x, selected_date))]
-            display_title = format_date_option(selected_date)
-            st.markdown(f"### 📈 {display_title} 동선 히트맵")
+    
+    if df_all is not None and 'date' in df_all.columns:
+        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
+        # 전체 누적 보기는 동선 데이터에서 메모리를 초과하므로 선택지에서 뺐습니다!
+        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", available_dates, key="heatmap_date", format_func=format_date_option)
+        
+        display_title = format_date_option(selected_date)
+        st.markdown(f"### 📈 {display_title} 동선 히트맵")
+        
+        # 사용자가 선택한 날짜의 파일만 딱 1개 찾아서 엽니다.
+        filtered_traj = pd.DataFrame()
+        target_files = glob.glob(f"*{selected_date}*")
+        traj_files = [f for f in target_files if 'trajectory' in f.lower() or 'real_users_trajectory' in f.lower()]
+        
+        if traj_files:
+            try:
+                filtered_traj = pd.read_parquet(traj_files[0]) if traj_files[0].endswith('.parquet') else pd.read_csv(traj_files[0])
+            except Exception as e:
+                st.error(f"파일을 읽는 중 에러가 발생했습니다: {e}")
+                
         if not filtered_traj.empty:
             col1, col2 = st.columns([1, 3])
             with col1:
@@ -275,8 +266,8 @@ elif menu == "🔥 정밀 히트맵":
                     ax.axis('off')
                     st.pyplot(fig)
                 else: st.warning("⚠️ 선택하신 스냅샷 시간대에는 고객 동선 데이터가 없습니다.")
-        else: st.info("선택한 날짜에 동선 데이터가 없습니다.")
-    else: st.error("데이터에 날짜 정보가 없거나 궤적(Trajectory) 파일이 없습니다.")
+        else: st.info(f"⚠️ {selected_date}의 동선 데이터 파일을 깃허브에서 찾을 수 없습니다. (파일명: trajectory_light_{selected_date}.parquet)")
+    else: st.error("데이터 파일에 날짜 정보가 없습니다.")
 
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
@@ -284,14 +275,9 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
     
     with st.container(border=True):
         st.markdown("<h4 style='color: #1E293B; margin-top:0;'>🔮 내일의 상황을 입력해주세요 (자동계산 지원)</h4>", unsafe_allow_html=True)
-        
         row1_col1, row1_col2 = st.columns(2)
-        with row1_col1:
-            future_weather = st.selectbox("⛅ 1. 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
-        with row1_col2:
-            future_dayname = st.selectbox("📅 2. 요일 선택 (평일/주말 자동분류)", 
-                                          ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", 
-                                           "Friday (금)", "Saturday (토)", "Sunday (일)"])
+        with row1_col1: future_weather = st.selectbox("⛅ 1. 예상 날씨", ["Sunny (맑음)", "Cloudy (흐림)", "Rainy (비/눈)"])
+        with row1_col2: future_dayname = st.selectbox("📅 2. 요일 선택 (평일/주말 자동분류)", ["Monday (월)", "Tuesday (화)", "Wednesday (수)", "Thursday (목)", "Friday (금)", "Saturday (토)", "Sunday (일)"])
             
         is_weekend = 1 if "Saturday" in future_dayname or "Sunday" in future_dayname else 0
         weekend_text = "주말" if is_weekend else "평일"
@@ -319,13 +305,11 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                 
                 target_zones = ['라면', '채소/계란/과일', '주류', '장난감']
                 predictions = {}
-                
                 day_map = {"Monday (월)": "Monday", "Tuesday (화)": "Tuesday", "Wednesday (수)": "Wednesday", "Thursday (목)": "Thursday", "Friday (금)": "Friday", "Saturday (토)": "Saturday", "Sunday (일)": "Sunday"}
                 
                 for zone in target_zones:
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
-                    
                     input_data['Is_Weekend'] = is_weekend
                     input_data['Is_Holiday'] = is_holiday
                     input_data['Is_Working_Holiday'] = 1 if (is_holiday == 1 and is_weekend == 0) else 0 
@@ -340,12 +324,10 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                         
                     selected_day = day_map[future_dayname]
                     day_col = f"DayName_Clean_{selected_day}"
-                    if day_col in input_data.columns:
-                        input_data[day_col] = 1
+                    if day_col in input_data.columns: input_data[day_col] = 1
                     
                     zone_col = f"zone_{zone}"
-                    if zone_col in input_data.columns:
-                        input_data[zone_col] = 1
+                    if zone_col in input_data.columns: input_data[zone_col] = 1
                         
                     pred_traffic = ai_model.predict(input_data)[0]
                     predictions[zone] = pred_traffic
@@ -373,24 +355,15 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                         interpolate='monotone', color='#6D28D9', strokeWidth=3
                     ).encode(x=alt.X('시간:T'), y=alt.Y('예상방문객:Q'))
                     st.altair_chart(chart.properties(height=250), use_container_width=True)
-                except Exception as e:
-                    pass
+                except Exception as e: pass
 
                 st.markdown("""
                 <div style="background-color: #F8FAFC; padding: 25px; border-radius: 15px; border-left: 5px solid #8B5CF6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                     <h3 style="color: #4C1D95; margin-top: 0;">📋 AI 매장 운영 브리핑</h3>
                 """, unsafe_allow_html=True)
                 
-                holiday_txt = ""
-                if is_holiday:
-                    holiday_txt = f"(공휴일[{weekend_text}] / {'명절 연휴' if is_long_holiday else '일반'})"
-                else:
-                    holiday_txt = f"({weekend_text})"
-                
-                pre_post_txt = ""
-                if is_pre_holiday: pre_post_txt = " 📌 **[공휴일 전날 효과 적용됨]**"
-                if is_post_holiday: pre_post_txt = " 📌 **[공휴일 다음날 효과 적용됨]**"
-                    
+                holiday_txt = f"(공휴일[{weekend_text}] / {'명절 연휴' if is_long_holiday else '일반'})" if is_holiday else f"({weekend_text})"
+                pre_post_txt = " 📌 **[공휴일 전날 효과 적용됨]**" if is_pre_holiday else " 📌 **[공휴일 다음날 효과 적용됨]**" if is_post_holiday else ""
                 day_str = future_dayname.split()[1].replace('(', '').replace(')', '') 
                 st.markdown(f"**상황 요약:** 내일은 **{future_weather.split()[0]}** 날씨의 **{day_str}요일 {holiday_txt}** 입니다.{pre_post_txt}<br><br>", unsafe_allow_html=True)
                 
@@ -409,11 +382,55 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
                         st.markdown(f"👉 **AI 인사이트:** 주말/휴일 가족 단위 방문객 증가로 트래픽 폭발이 예상됩니다. 전담 직원을 배치하세요.<br><br>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"🛒 **[{zone}] 코너 예상 방문객: {traffic:,.0f}명**<br><br>", unsafe_allow_html=True)
-                
                 st.markdown("</div>", unsafe_allow_html=True)
-                
             except Exception as e:
                 st.error(f"⚠️ AI 분석 중 오류가 발생했습니다. (사유: {e}) 새로 갱신된 'ai_forecaster.pkl' 파일이 깃허브에 잘 올라갔는지 확인해주세요!")
+
+elif menu == "💬 Gemini 매장 비서 (챗봇)":
+    st.title("💬 Gemini 매장 운영 비서")
+    st.markdown("점장님, 매장 트래픽이나 운영 전략에 대해 무엇이든 물어보세요! (예: *내일 비가 오는데 어떤 매대가 인기가 많을까?*)")
+
+    if not HAS_GENAI:
+        st.error("⚠️ `google-generativeai` 라이브러리가 설치되지 않았습니다. 깃허브의 `requirements.txt` 파일에 `google-generativeai`가 있는지 확인해주세요.")
+    else:
+        with st.container(border=True):
+            st.markdown("#### 🔑 1단계: API 키 입력")
+            api_key = st.text_input("Google AI Studio에서 발급받은 Gemini API Key를 입력해주세요.", type="password", help="키는 저장되지 않으며 현재 세션에서만 사용됩니다.")
+            
+            if api_key:
+                try:
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    st.markdown("#### 🗣️ 2단계: 질문하기")
+                    
+                    if "chat_history" not in st.session_state:
+                        st.session_state.chat_history = []
+
+                    for msg in st.session_state.chat_history:
+                        with st.chat_message(msg["role"]):
+                            st.markdown(msg["content"])
+
+                    if prompt := st.chat_input("질문을 입력하세요... (예: 내일 비가 오는데, 라면 코너 재고를 얼마나 늘릴까?)"):
+                        st.session_state.chat_history.append({"role": "user", "content": prompt})
+                        with st.chat_message("user"):
+                            st.markdown(prompt)
+
+                        system_context = """
+                        당신은 대형 마트의 똑똑한 AI 점장 비서(Gemini)입니다.
+                        사용자(점장님)가 매장 운영, 트래픽 예측, 날씨에 따른 마케팅, 재고 관리 등에 대해 질문하면,
+                        친절하고 전문적이며 데이터에 기반한 조언을 제공합니다.
+                        답변은 3~4문장으로 너무 길지 않게, 핵심만 짚어서 마크다운(가독성 좋게)으로 작성해주세요.
+                        질문: 
+                        """
+                        
+                        with st.chat_message("assistant"):
+                            with st.spinner("점장님의 질문을 분석 중입니다..."):
+                                response = model.generate_content(system_context + prompt)
+                                st.markdown(response.text)
+                                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error(f"API 키가 잘못되었거나 오류가 발생했습니다: {e}")
 
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
