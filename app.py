@@ -424,7 +424,7 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                             new_d = calc_dist(sim_centers[u], sim_centers[v])
                             if old_d > 0 and new_d > 0:
                                 ratio = max(0.5, min(old_d / new_d, 2.0))
-                                sim_flows.at[idx, 'weight'] = row['weight'] * ratio
+                                sim_flows.at[idx, 'weight'] = int(row['weight'] * ratio)
 
                     G_sim = nx.DiGraph()
                     for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
