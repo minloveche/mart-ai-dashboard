@@ -11,6 +11,7 @@ import glob
 import altair as alt
 import datetime
 import joblib
+import networkx as nx  # ⭐ [추가됨] 점장님의 동선 흐름도를 그리기 위한 라이브러리
 
 # ⭐ [추가됨] 제미나이 인공지능 라이브러리
 try:
@@ -194,6 +195,7 @@ if menu == "📊 트래픽 요약":
                     st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
                 else: st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
             except: st.error("그래프 생성 중 오류가 발생했습니다.")
+            
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 🏆 구역별 전체 방문 횟수")
             df_zones = filtered_df['zone'].value_counts().reset_index()
@@ -206,6 +208,89 @@ if menu == "📊 트래픽 요약":
             )
             text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=','))
             st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
+            
+            # =====================================================================
+            # ⭐ [점장님의 Flow Map 이식 부분] 막대그래프 바로 아래에 추가되었습니다!
+            # =====================================================================
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("### 🕸️ 매장 내 고객 이동 동선 흐름도 (Flow Map)")
+            st.markdown("선택된 기간 동안 고객들이 **어느 구역에서 어느 구역으로 가장 많이 이동**했는지 화살표의 굵기로 파악하세요.")
+            
+            with st.spinner("동선 흐름도를 렌더링 중입니다..."):
+                flow_df = filtered_df.copy()
+                
+                # next_zone 열이 없다면 enter_time을 기준으로 즉석에서 생성합니다.
+                if 'next_zone' not in flow_df.columns and 'enter_time' in flow_df.columns:
+                    flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
+                    flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
+                
+                if 'next_zone' in flow_df.columns:
+                    # NaN 값 제거 및 동일 구역 내 이동(zone == next_zone) 제외
+                    flow_df = flow_df.dropna(subset=['next_zone'])
+                    flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
+                    
+                    # 이동 횟수(가중치) 계산
+                    flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
+                    
+                    if not flow_counts.empty:
+                        top_flows = flow_counts.sort_values('weight', ascending=False).head(100)
+                        zone_popularity = filtered_df['zone'].value_counts().to_dict()
+                        
+                        # NetworkX 그래프 생성
+                        G = nx.DiGraph()
+                        for zone_name in ZONES.keys():
+                            G.add_node(zone_name)
+                        for _, row in top_flows.iterrows():
+                            G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
+                        
+                        # 노드 위치 지정 (구역의 중앙 좌표)
+                        pos = {}
+                        for node in G.nodes():
+                            if node in ZONES:
+                                b = ZONES[node]
+                                pos[node] = ((b['x_min'] + b['x_max']) / 2, (b['y_min'] + b['y_max']) / 2)
+                            else:
+                                pos[node] = (663 / 2, 500 / 2) # 예외 처리
+                        
+                        # 그래프 그리기
+                        fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
+                        img_path = 'map_image.jpg'
+                        try:
+                            img = mpimg.imread(img_path)
+                            ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.5)
+                        except FileNotFoundError:
+                            ax_flow.set_xlim(0, 663)
+                            ax_flow.set_ylim(500, 0)
+                            ax_flow.invert_yaxis()
+                        
+                        pop_values = list(zone_popularity.values())
+                        max_pop = max(pop_values) if pop_values else 1
+                        
+                        node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 1500 + 100 for node in G.nodes()]
+                        node_colors = ['#FFB347' if zone_popularity.get(node, 0) > 0 else '#B0BEC5' for node in G.nodes()]
+                        
+                        edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
+                        max_weight = max(edge_weights) if edge_weights else 1
+                        edge_widths = [(w / max_weight) * 3 + 0.5 for w in edge_weights]
+                        
+                        # 노드, 엣지, 라벨 렌더링
+                        nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, 
+                                               edgecolors='black', linewidths=1.2, alpha=0.85)
+                        nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', 
+                                               arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
+                        nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], 
+                                                font_size=8, font_weight='bold',
+                                                bbox=dict(facecolor='white', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2'))
+                        
+                        ax_flow.axis('off')
+                        
+                        # 저장 파일 대신 st.pyplot으로 화면에 송출
+                        st.pyplot(fig_flow)
+                    else:
+                        st.info("이동 동선 데이터가 충분하지 않습니다.")
+                else:
+                    st.info("💡 동선 흐름도를 그리기 위한 'next_zone' 또는 'enter_time' 데이터가 존재하지 않습니다.")
+
         else: st.info("데이터가 없습니다.")
     else: st.error("데이터 파일에 날짜 정보가 없습니다. 깃허브에 데이터 파일이 존재하는지 확인해주세요.")
 
@@ -386,9 +471,6 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except Exception as e:
                 st.error(f"⚠️ AI 분석 중 오류가 발생했습니다. (사유: {e}) 새로 갱신된 'ai_forecaster.pkl' 파일이 깃허브에 잘 올라갔는지 확인해주세요!")
 
-# ====================================================================
-# ⭐ [메뉴 3-2] Gemini 매장 비서 (챗봇) - 자동 로그인 적용!
-# ====================================================================
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
     st.markdown("점장님, 매장 트래픽이나 운영 전략에 대해 무엇이든 물어보세요! (예: *내일 비가 오는데 어떤 매대가 인기가 많을까?*)")
@@ -398,7 +480,6 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
     else:
         with st.container(border=True):
             try:
-                # ⭐ 이제 매번 묻지 않고, 스트림릿 서버의 '비밀 금고(Secrets)'에서 키를 몰래 꺼내옵니다!
                 api_key = st.secrets["GEMINI_API_KEY"]
                 genai.configure(api_key=api_key)
                 
