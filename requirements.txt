@@ -9,3 +9,4 @@ joblib
 pyarrow
 fastparquet
 google-generativeai
+networkx
