@@ -142,16 +142,12 @@ def format_date_option(d):
         return weather_info.get(day_num, str(d))
     except: return str(d)
 
-# ====================================================================
-# ⭐ [메뉴 구조 업데이트] 메인 메뉴에서 시뮬레이터를 빼고, AI 어드바이저 안으로!
-# ====================================================================
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
 st.sidebar.title("마트 AI 대시보드")
 main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
 if main_category == "🤖 AI 어드바이저":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
-    # 서브 메뉴에 3가지 AI 기능을 모두 모았습니다.
     sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "🔄 매대 이동 시뮬레이터", "💬 Gemini 매장 비서 (챗봇)"])
     menu = sub_menu 
 else:
@@ -292,9 +288,6 @@ elif menu == "🔥 정밀 히트맵":
                 else: st.warning("데이터가 없습니다.")
         else: st.info(f"⚠️ {selected_date}의 동선 데이터 파일이 없습니다.")
 
-# ====================================================================
-# [서브 메뉴] 1. 내일의 AI 예측 브리핑
-# ====================================================================
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
     st.title("🌤️ 내일의 트래픽 예측 및 AI 브리핑")
     with st.container(border=True):
@@ -384,7 +377,7 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except: st.error("AI 모델을 불러오지 못했습니다.")
 
 # ====================================================================
-# [서브 메뉴] 2. 매대 이동 시뮬레이터
+# ⭐ [서브 메뉴] 2. 매대 이동 시뮬레이터 (전광판 추가 완료!)
 # ====================================================================
 elif menu == "🔄 매대 이동 시뮬레이터":
     st.title("🔄 디지털 트윈: 매대 이동 시뮬레이터")
@@ -413,6 +406,7 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                         flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
                     flow_df = flow_df.dropna(subset=['next_zone'])
                     flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
+                    
                     base_flows = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                     sim_flows = base_flows.sort_values('weight', ascending=False).head(100).copy()
 
@@ -425,7 +419,23 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                             if old_d > 0 and new_d > 0:
                                 ratio = max(0.5, min(old_d / new_d, 2.0))
                                 sim_flows.at[idx, 'weight'] = int(row['weight'] * ratio)
+                    
+                    # ⭐ [수술 부위] 비포 앤 애프터 전광판 추가!
+                    st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
+                    
+                    # 기존 트래픽 계산 (A구역/B구역에 얽힌 총 이동 횟수)
+                    orig_a_traffic = int(base_flows[(base_flows['zone'] == swap_a) | (base_flows['next_zone'] == swap_a)]['weight'].sum())
+                    sim_a_traffic = int(sim_flows[(sim_flows['zone'] == swap_a) | (sim_flows['next_zone'] == swap_a)]['weight'].sum())
+                    
+                    orig_b_traffic = int(base_flows[(base_flows['zone'] == swap_b) | (base_flows['next_zone'] == swap_b)]['weight'].sum())
+                    sim_b_traffic = int(sim_flows[(sim_flows['zone'] == swap_b) | (sim_flows['next_zone'] == swap_b)]['weight'].sum())
+                    
+                    metric_col1, metric_col2 = st.columns(2)
+                    metric_col1.metric(f"[{swap_a}] 매대 주변 트래픽 변동", f"{sim_a_traffic:,} 회", f"{sim_a_traffic - orig_a_traffic:,} 회")
+                    metric_col2.metric(f"[{swap_b}] 매대 주변 트래픽 변동", f"{sim_b_traffic:,} 회", f"{sim_b_traffic - orig_b_traffic:,} 회")
+                    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
+                    # 아래는 기존의 시뮬레이션 네트워크 그래프 그리는 코드
                     G_sim = nx.DiGraph()
                     for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
                     for _, row in sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
@@ -455,9 +465,6 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     st.pyplot(fig_sim)
                     st.success(f"✨ 시뮬레이션 완료! 빨간색으로 칠해진 [{swap_a}]와 [{swap_b}] 매대의 위치가 바뀌었고, 이에 따라 연관된 보라색 트래픽 흐름(굵기)이 재계산되었습니다.")
 
-# ====================================================================
-# [서브 메뉴] 3. Gemini 매장 비서 (챗봇)
-# ====================================================================
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
     if not HAS_GENAI: st.error("google-generativeai 라이브러리가 없습니다.")
@@ -488,9 +495,6 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             except KeyError: st.error("비밀 금고에 API 키가 없습니다!")
 
-# ====================================================================
-# [기존 메뉴 5] 센서 위치
-# ====================================================================
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
     try:
