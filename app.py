@@ -148,7 +148,14 @@ main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약",
 
 if main_category == "🤖 AI 어드바이저":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
-    sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "🔄 매대 이동 시뮬레이터", "💬 Gemini 매장 비서 (챗봇)"])
+    # 👇 여기에 2개 메뉴(체류시간, 혼잡도)를 추가했어!
+    sub_menu = st.sidebar.radio("💡 상세 기능 선택", [
+        "🌤️ 내일의 AI 예측 브리핑", 
+        "⏳ 구역별 평균 체류시간 예측", 
+        "🚨 골든타임 혼잡도 경보 시스템", 
+        "🔄 매대 이동 시뮬레이터", 
+        "💬 Gemini 매장 비서 (챗봇)"
+    ])
     menu = sub_menu 
 else:
     menu = main_category
@@ -377,7 +384,105 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except: st.error("AI 모델을 불러오지 못했습니다.")
 
 # ====================================================================
-# ⭐ [서브 메뉴] 2. 매대 이동 시뮬레이터 (전광판 추가 완료!)
+# ⭐ [서브 메뉴 2] 구역별 평균 체류시간 예측
+# ====================================================================
+elif menu == "⏳ 구역별 평균 체류시간 예측":
+    st.title("⏳ AI 구역별 평균 체류시간 예측")
+    st.markdown("""
+    <div style="background-color: #F0FDF4; padding: 20px; border-radius: 10px; border-left: 5px solid #22C55E; margin-bottom: 20px;">
+        <h4 style="margin-top: 0; color: #166534;">XGBoost 회귀(Regression) 기반 체류시간 분석</h4>
+        <p style="color: #15803D; font-size: 14px; margin-bottom: 0;">요일, 시간대, 날씨 등의 환경 변수를 기반으로 고객이 특정 구역에 얼마나 오래 머물지(Dwell Time) 예측합니다.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    zone_list = list(ZONES.keys())
+    
+    col1, col2, col3 = st.columns(3)
+    with col1: target_zone = st.selectbox("📍 예측할 구역", zone_list, index=zone_list.index('장난감') if '장난감' in zone_list else 0)
+    with col2: target_time = st.slider("⏰ 예측 시간대", 9, 22, 14, format="%d시")
+    with col3: target_day = st.selectbox("📅 요일/휴일 여부", ["평일", "주말/공휴일"])
+
+    if st.button("체류시간 예측하기 🚀", use_container_width=True):
+        with st.spinner("XGBoost 모델이 체류시간을 계산 중입니다..."):
+            # -------------------------------------------------------------
+            # 💡 [나중에 실제 모델 학습 후 주석 풀고 사용할 코드]
+            # model_dwell = joblib.load("xgb_dwell_time_model.pkl")
+            # input_data = pd.DataFrame({'zone': [target_zone], 'time': [target_time], 'is_weekend': [1 if "주말" in target_day else 0]})
+            # pred_seconds = model_dwell.predict(input_data)[0]
+            # -------------------------------------------------------------
+            
+            # (임시) 데모용 시뮬레이션 계산 로직
+            import random
+            base_time = 120  # 기본 2분
+            if "주말" in target_day: base_time += 180
+            if target_zone in ['장난감', '주류', '수산']: base_time += random.randint(200, 400)
+            if 17 <= target_time <= 19: base_time += 150
+            
+            pred_seconds = base_time + random.randint(-30, 30)
+            mins = pred_seconds // 60
+            secs = pred_seconds % 60
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            metric_col1, metric_col2 = st.columns([1, 2])
+            metric_col1.metric(f"[{target_zone}] 예상 평균 체류시간", f"{mins}분 {secs}초", f"전체 평균 대비 +{random.randint(10, 40)}초")
+            
+            with metric_col2:
+                if mins >= 5:
+                    st.info(f"💡 **AI 인사이트:** [{target_zone}] 구역에 고객이 {mins}분 이상 오래 머물 것으로 예측됩니다. 이 시간대에는 해당 구역에 안내 직원을 상주시키거나, 모니터에 체류형 광고를 송출하는 것이 유리합니다.")
+                else:
+                    st.success(f"💡 **AI 인사이트:** [{target_zone}] 구역은 체류시간이 짧아 회전율이 빠를 것으로 보입니다. 눈에 띄는 팝업 매대나 즉각적인 충동구매를 유도하는 1+1 상품을 전진 배치하세요.")
+
+# ====================================================================
+# ⭐ [서브 메뉴3] 골든타임 혼잡도 경보 시스템
+# ====================================================================
+elif menu == "🚨 골든타임 혼잡도 경보 시스템":
+    st.title("🚨 골든타임 혼잡도 경보 시스템")
+    st.markdown("""
+    <div style="background-color: #FEF2F2; padding: 20px; border-radius: 10px; border-left: 5px solid #EF4444; margin-bottom: 20px;">
+        <h4 style="margin-top: 0; color: #991B1B;">Random Forest 분류(Classification) 기반 병목 현상 예측</h4>
+        <p style="color: #7F1D1D; font-size: 14px; margin-bottom: 0;">특정 시간대 구역의 혼잡도를 미리 예측하여 안전사고를 예방하고 인력 배치를 돕습니다.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    zone_list = list(ZONES.keys())
+    
+    c1, c2, c3 = st.columns(3)
+    with c1: check_zone = st.selectbox("🔍 모니터링할 구역", zone_list, index=zone_list.index('행사(1)') if '행사(1)' in zone_list else 0)
+    with c2: check_time = st.time_input("⏰ 혼잡도 예측 대상 시간", datetime.time(18, 30))
+    with c3: check_day = st.selectbox("📅 요일 환경", ["평일 (월~목)", "주말/공휴일 (금~일)"])
+
+    if st.button("위험도 분석 실행 🔍", type="primary", use_container_width=True):
+        with st.spinner("분류 모델이 혼잡도를 판별 중입니다..."):
+            # -------------------------------------------------------------
+            # 💡 [나중에 실제 모델 학습 후 주석 풀고 사용할 코드]
+            # model_congestion = joblib.load("rf_congestion_classifier.pkl")
+            # congestion_level = model_congestion.predict(input_data)[0] 
+            # -------------------------------------------------------------
+            
+            # (임시) 데모용 시뮬레이션 로직
+            time_val = check_time.hour
+            is_weekend = 1 if "주말" in check_day else 0
+            
+            if is_weekend and (16 <= time_val <= 20) and check_zone in ['행사(1)', '행사(2)', '축산', '채소/계란/과일']:
+                level, color, status, msg = 2, "#EF4444", "혼잡 (RED)", f"[{check_zone}] 구역에 심각한 병목 현상이 발생할 확률이 매우 높습니다. 안전 요원 및 추가 계산대 인력을 배치하세요!"
+            elif time_val >= 21 or time_val <= 11:
+                level, color, status, msg = 0, "#10B981", "원활 (GREEN)", f"[{check_zone}] 구역의 동선이 원활할 것으로 예상됩니다. 재고 보충 작업을 진행하기 좋은 타이밍입니다."
+            else:
+                level, color, status, msg = 1, "#F59E0B", "보통 (YELLOW)", f"[{check_zone}] 구역에 적절한 트래픽이 예상됩니다. 현재 운영 상태를 유지하세요."
+
+            st.markdown(f"""
+            <div style="text-align: center; padding: 40px; border: 3px solid {color}; border-radius: 20px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="font-size: 50px; margin-bottom: 10px;">{'🔴' if level==2 else '🟡' if level==1 else '🟢'}</div>
+                <h1 style="color: {color}; margin-top: 0; margin-bottom: 10px;">{status}</h1>
+                <h3 style="color: #334155; margin-top: 0;">예측 시간: {check_time.strftime('%H:%M')}</h3>
+                <hr style="border-color: #E2E8F0; margin: 20px 0;">
+                <p style="font-size: 18px; color: #475569; font-weight: bold;">{msg}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+
+# ====================================================================
+# ⭐ [서브 메뉴] 4. 매대 이동 시뮬레이터 (전광판 추가 완료!)
 # ====================================================================
 elif menu == "🔄 매대 이동 시뮬레이터":
     st.title("🔄 디지털 트윈: 매대 이동 시뮬레이터")
