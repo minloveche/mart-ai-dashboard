@@ -377,14 +377,14 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except: st.error("AI 모델을 불러오지 못했습니다.")
 
 # ====================================================================
-# ⭐ [업그레이드] 매대 이동 시뮬레이터 (KeyError 에러 최종 해결 버전)
+# ⭐ [업그레이드] 매대 이동 시뮬레이터 (모든 구역 색상/숫자 시각화!)
 # ====================================================================
 elif menu == "🔄 매대 이동 시뮬레이터":
     st.title("🔄 디지털 트윈: 매대 이동 시뮬레이터")
     st.markdown("""
     실제 매대를 물리적으로 옮기기 전에, 대시보드 위에서 두 구역의 위치를 맞바꾸어 봅니다.
     AI(거리-마찰 알고리즘)가 마트 전체의 변경된 동선 거리를 순식간에 재계산하여, 
-    **바뀐 두 매대뿐만 아니라 주변 상권(나비효과)까지 어떻게 트래픽이 변할지 완벽하게 예측**해 줍니다.
+    **모든 매대의 트래픽 증감(나비효과)을 색상과 정확한 숫자로 한눈에 보여줍니다.**
     """)
 
     if df_all is not None:
@@ -433,54 +433,68 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                                 sim_zone_pop[u] = sim_zone_pop.get(u, 0) + diff
                                 sim_zone_pop[v] = sim_zone_pop.get(v, 0) + diff
                     
-                    orig_a_traffic = zone_popularity.get(swap_a, 0)
-                    sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
-                    orig_b_traffic = zone_popularity.get(swap_b, 0)
-                    sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
-                    
-                    diff_a = sim_a_traffic - orig_a_traffic
-                    diff_b = sim_b_traffic - orig_b_traffic
+                    # ⭐ 1. 모든 구역의 변동량(diff) 계산하여 데이터프레임 만들기
+                    zones_data = []
+                    for k in ZONES.keys():
+                        orig_val = zone_popularity.get(k, 0)
+                        sim_val = int(sim_zone_pop.get(k, 0))
+                        diff = sim_val - orig_val
+                        zones_data.append({'구역': k, '방문횟수': max(0, sim_val), '변동량': diff})
+                        
+                    df_zones_sim = pd.DataFrame(zones_data)
+                    df_zones_sim = df_zones_sim.sort_values('방문횟수', ascending=False)
 
-                    # ⭐ [에러 해결 부위] .get(k, 0) 로 안전띠 장착!
-                    other_diffs = {k: int(sim_zone_pop.get(k, 0)) - zone_popularity.get(k, 0) for k in ZONES.keys() if k not in [swap_a, swap_b]}
-                    top_gainer = max(other_diffs, key=other_diffs.get) if other_diffs else None
-                    top_gainer_diff = other_diffs.get(top_gainer, 0) if top_gainer else 0
+                    # ⭐ 2. 색상 규칙 적용 (모든 구역을 증감에 따라 색칠!)
+                    def get_color(row):
+                        if row['구역'] in [swap_a, swap_b]: return '#8B5CF6' # 보라색 (위치 이동된 매대)
+                        elif row['변동량'] > 0: return '#10B981' # 초록색 (수혜 구역)
+                        elif row['변동량'] < 0: return '#EF4444' # 빨간색 (피해 구역)
+                        else: return '#CBD5E1' # 회색 (변화 없음)
+                        
+                    df_zones_sim['색상'] = df_zones_sim.apply(get_color, axis=1)
+                    
+                    # 막대그래프에 붙일 예쁜 텍스트 라벨 (예: 45,000 (▲ 300))
+                    df_zones_sim['증감텍스트'] = df_zones_sim['변동량'].apply(lambda x: f"▲ {x:,}" if x > 0 else (f"▼ {abs(x):,}" if x < 0 else "-"))
+                    df_zones_sim['라벨'] = df_zones_sim.apply(lambda x: f"{x['방문횟수']:,} ({x['증감텍스트']})", axis=1)
 
                     st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
+                    
+                    sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
+                    sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
+                    diff_a = sim_a_traffic - zone_popularity.get(swap_a, 0)
+                    diff_b = sim_b_traffic - zone_popularity.get(swap_b, 0)
+                    
                     metric_col1, metric_col2, metric_col3 = st.columns(3)
                     metric_col1.metric(f"🔀 [{swap_a}] 매대 변동", f"{sim_a_traffic:,} 회", f"{diff_a:,} 회")
                     metric_col2.metric(f"🔀 [{swap_b}] 매대 변동", f"{sim_b_traffic:,} 회", f"{diff_b:,} 회")
+                    
+                    other_diffs = {k: v for k, v in zip(df_zones_sim['구역'], df_zones_sim['변동량']) if k not in [swap_a, swap_b]}
+                    top_gainer = max(other_diffs, key=other_diffs.get) if other_diffs else None
+                    top_gainer_diff = other_diffs.get(top_gainer, 0) if top_gainer else 0
+                    
                     if top_gainer and top_gainer_diff > 0:
-                        metric_col3.metric(f"📈 나비효과 최대 수혜: [{top_gainer}]", f"{int(sim_zone_pop.get(top_gainer, 0)):,} 회", f"{top_gainer_diff:,} 회")
+                        metric_col3.metric(f"📈 최대 수혜: [{top_gainer}]", f"{int(sim_zone_pop.get(top_gainer, 0)):,} 회", f"{top_gainer_diff:,} 회")
                     else:
-                        metric_col3.metric(f"📉 주변부 전반적 트래픽 하락", "감소", "거리 멀어짐")
+                        metric_col3.metric(f"📉 주변부 전반적 하락", "감소", "거리 멀어짐")
                     
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-                    st.markdown("### 🏆 전체 구역 예상 방문 횟수 (나비효과 적용)", unsafe_allow_html=True)
-                    
-                    df_zones_sim = pd.DataFrame(list(sim_zone_pop.items()), columns=['구역', '방문횟수'])
-                    df_zones_sim['방문횟수'] = df_zones_sim['방문횟수'].apply(lambda x: max(0, int(x))) 
-                    df_zones_sim = df_zones_sim.sort_values('방문횟수', ascending=False)
-
-                    def get_color(zone_name):
-                        if zone_name in [swap_a, swap_b]: return '#EF4444' 
-                        elif zone_name == top_gainer and top_gainer_diff > 0: return '#F59E0B' 
-                        else: return '#93C5FD' 
-                    
-                    df_zones_sim['색상'] = df_zones_sim['구역'].apply(get_color)
+                    # ⭐ 3. 전체 구역 방문 횟수 막대그래프 출력
+                    st.markdown("### 🏆 전체 구역 예상 방문 횟수 (나비효과 컬러 맵핑)", unsafe_allow_html=True)
+                    st.markdown("🟣 **위치 이동** | 🟢 **방문객 증가** | 🔴 **방문객 감소** | ⚪ **변화 없음**")
 
                     bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=5).encode(
                         x=alt.X('방문횟수:Q', title='예상 방문 횟수 (회)'),
                         y=alt.Y('구역:N', sort='-x', title=''),
                         color=alt.Color('색상:N', scale=None, legend=None),
-                        tooltip=['구역', '방문횟수']
+                        tooltip=['구역', '방문횟수', '변동량']
                     )
-                    text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=',.0f'))
+                    text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=12, fontWeight='bold', color='#1E293B').encode(text='라벨:N')
                     st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
 
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
+                    # ⭐ 4. 시뮬레이션 네트워크 그래프 (노드 색상도 막대그래프와 통일!)
                     st.markdown("### 🕸️ 시뮬레이션 동선 흐름도 (Flow Map)")
                     top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
                     
@@ -496,10 +510,11 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     
                     node_colors = []
                     for node in G_sim.nodes():
-                        if node in [swap_a, swap_b]: node_colors.append('#EF4444')
-                        elif node == top_gainer and top_gainer_diff > 0: node_colors.append('#F59E0B')
-                        elif sim_zone_pop.get(node, 0) > 0: node_colors.append('#FFB347')
-                        else: node_colors.append('#B0BEC5')
+                        diff = int(sim_zone_pop.get(node, 0)) - zone_popularity.get(node, 0)
+                        if node in [swap_a, swap_b]: node_colors.append('#8B5CF6') # 보라색
+                        elif diff > 0: node_colors.append('#10B981') # 초록색
+                        elif diff < 0: node_colors.append('#EF4444') # 빨간색
+                        else: node_colors.append('#CBD5E1') # 회색
                     
                     node_sizes = [(sim_zone_pop.get(node, 0) / max_pop) * 1500 + 100 for node in G_sim.nodes()]
                     max_weight = max([G_sim[u][v]['weight'] for u, v in G_sim.edges()]) if G_sim.edges() else 1
@@ -511,7 +526,7 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     
                     ax_sim.axis('off')
                     st.pyplot(fig_sim)
-                    st.success(f"✨ 시뮬레이션 완료! 빨간색으로 칠해진 [{swap_a}]와 [{swap_b}] 매대의 위치가 바뀌면서, 마트 내 30개 모든 구역의 트래픽이 연쇄적으로 재계산되었습니다.")
+                    st.success(f"✨ 시뮬레이션 완료! 보라색으로 칠해진 [{swap_a}]와 [{swap_b}] 매대의 위치가 바뀌면서, 마트 내 30개 모든 구역의 트래픽이 연쇄적으로 재계산되었습니다.")
 
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
