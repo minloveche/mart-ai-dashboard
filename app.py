@@ -377,13 +377,13 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except: st.error("AI 모델을 불러오지 못했습니다.")
 
 # ====================================================================
-# ⭐ [서브 메뉴] 2. 매대 이동 시뮬레이터 (전광판 추가 완료!)
+# ⭐ [업그레이드] 매대 이동 시뮬레이터 (막대그래프 완벽 통합)
 # ====================================================================
 elif menu == "🔄 매대 이동 시뮬레이터":
     st.title("🔄 디지털 트윈: 매대 이동 시뮬레이터")
     st.markdown("""
     실제 매대를 물리적으로 옮기기 전에, 대시보드 위에서 두 구역의 위치를 맞바꾸어 봅니다.
-    AI(거리-마찰 알고리즘)가 변경된 동선 거리를 계산하여 **트래픽이 어떻게 변할지 흐름도의 굵기로 예측**해 줍니다.
+    AI(거리-마찰 알고리즘)가 변경된 동선 거리를 계산하여 **트래픽이 어떻게 변할지 흐름도의 굵기와 방문 횟수로 예측**해 줍니다.
     """)
 
     if df_all is not None:
@@ -420,22 +420,53 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                                 ratio = max(0.5, min(old_d / new_d, 2.0))
                                 sim_flows.at[idx, 'weight'] = int(row['weight'] * ratio)
                     
-                    # ⭐ [수술 부위] 비포 앤 애프터 전광판 추가!
-                    st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
-                    
-                    # 기존 트래픽 계산 (A구역/B구역에 얽힌 총 이동 횟수)
+                    # 1. 기존 트래픽 계산 (A구역/B구역)
                     orig_a_traffic = int(base_flows[(base_flows['zone'] == swap_a) | (base_flows['next_zone'] == swap_a)]['weight'].sum())
                     sim_a_traffic = int(sim_flows[(sim_flows['zone'] == swap_a) | (sim_flows['next_zone'] == swap_a)]['weight'].sum())
                     
                     orig_b_traffic = int(base_flows[(base_flows['zone'] == swap_b) | (base_flows['next_zone'] == swap_b)]['weight'].sum())
                     sim_b_traffic = int(sim_flows[(sim_flows['zone'] == swap_b) | (sim_flows['next_zone'] == swap_b)]['weight'].sum())
                     
+                    diff_a = sim_a_traffic - orig_a_traffic
+                    diff_b = sim_b_traffic - orig_b_traffic
+
+                    # 2. 전광판 송출
+                    st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
                     metric_col1, metric_col2 = st.columns(2)
-                    metric_col1.metric(f"[{swap_a}] 매대 주변 트래픽 변동", f"{sim_a_traffic:,} 회", f"{sim_a_traffic - orig_a_traffic:,} 회")
-                    metric_col2.metric(f"[{swap_b}] 매대 주변 트래픽 변동", f"{sim_b_traffic:,} 회", f"{sim_b_traffic - orig_b_traffic:,} 회")
+                    metric_col1.metric(f"[{swap_a}] 매대 주변 트래픽 변동", f"{sim_a_traffic:,} 회", f"{diff_a:,} 회")
+                    metric_col2.metric(f"[{swap_b}] 매대 주변 트래픽 변동", f"{sim_b_traffic:,} 회", f"{diff_b:,} 회")
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-                    # 아래는 기존의 시뮬레이션 네트워크 그래프 그리는 코드
+                    # ⭐ 3. [수술 부위] 구역별 방문 횟수 막대그래프 동적 생성!
+                    st.markdown("### 🏆 구역별 예상 방문 횟수 (시뮬레이션 결과 적용)", unsafe_allow_html=True)
+                    
+                    # 기본 전체 방문 횟수 표 가져오기
+                    df_zones_sim = df_all['zone'].value_counts().reset_index()
+                    df_zones_sim.columns = ['구역', '방문횟수']
+
+                    # 시뮬레이션으로 발생한 트래픽 증감분을 막대그래프 숫자에 합산 (음수 방지)
+                    df_zones_sim.loc[df_zones_sim['구역'] == swap_a, '방문횟수'] = df_zones_sim.loc[df_zones_sim['구역'] == swap_a, '방문횟수'].apply(lambda x: max(0, x + diff_a))
+                    df_zones_sim.loc[df_zones_sim['구역'] == swap_b, '방문횟수'] = df_zones_sim.loc[df_zones_sim['구역'] == swap_b, '방문횟수'].apply(lambda x: max(0, x + diff_b))
+
+                    # 방문 횟수 순으로 깔끔하게 재정렬
+                    df_zones_sim = df_zones_sim.sort_values('방문횟수', ascending=False)
+
+                    # 바뀐 매대 2개는 '강렬한 빨간색(#EF4444)'으로, 나머지는 기본 '파란색(#93C5FD)'으로 색칠!
+                    df_zones_sim['색상'] = df_zones_sim['구역'].apply(lambda x: '#EF4444' if x in [swap_a, swap_b] else '#93C5FD')
+
+                    bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=5).encode(
+                        x=alt.X('방문횟수:Q', title='예상 방문 횟수 (회)'),
+                        y=alt.Y('구역:N', sort='-x', title=''),
+                        color=alt.Color('색상:N', scale=None, legend=None),
+                        tooltip=['구역', '방문횟수']
+                    )
+                    text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=',.0f'))
+                    st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
+
+                    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+
+                    # 4. 아래는 시뮬레이션 네트워크 그래프 그리는 코드 (그대로 유지)
+                    st.markdown("### 🕸️ 시뮬레이션 동선 흐름도 (Flow Map)")
                     G_sim = nx.DiGraph()
                     for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
                     for _, row in sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
