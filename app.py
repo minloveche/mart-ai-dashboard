@@ -377,7 +377,7 @@ elif menu == "🌤️ 내일의 AI 예측 브리핑":
             except: st.error("AI 모델을 불러오지 못했습니다.")
 
 # ====================================================================
-# ⭐ [업그레이드] 매대 이동 시뮬레이터 (나비효과 전체 구역 연쇄 적용!)
+# ⭐ [업그레이드] 매대 이동 시뮬레이터 (KeyError 에러 최종 해결 버전)
 # ====================================================================
 elif menu == "🔄 매대 이동 시뮬레이터":
     st.title("🔄 디지털 트윈: 매대 이동 시뮬레이터")
@@ -398,12 +398,10 @@ elif menu == "🔄 매대 이동 시뮬레이터":
             if st.button("🚀 스와프 시뮬레이션 실행!", use_container_width=True):
                 with st.spinner(f"[{swap_a}]와 [{swap_b}]의 위치를 바꾸어 마트 전체의 나비효과를 계산합니다..."):
                     
-                    # 1. 원본 중심 좌표 및 변경된 좌표 설정
                     orig_centers = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) for node in ZONES}
                     sim_centers = orig_centers.copy()
                     sim_centers[swap_a], sim_centers[swap_b] = orig_centers[swap_b], orig_centers[swap_a]
 
-                    # 2. 원본 데이터 기반 흐름 및 방문객 수 도출
                     flow_df = df_all.copy()
                     if 'next_zone' not in flow_df.columns:
                         flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
@@ -411,37 +409,30 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     flow_df = flow_df.dropna(subset=['next_zone'])
                     flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
                     
-                    # 모든 경로(Edge) 가져오기
                     all_flows = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                     sim_flows = all_flows.copy()
                     
-                    # 기존 30개 구역의 전체 방문 횟수 딕셔너리
                     zone_popularity = df_all['zone'].value_counts().to_dict()
                     sim_zone_pop = zone_popularity.copy()
 
                     def calc_dist(p1, p2): return math.hypot(p1[0]-p2[0], p1[1]-p2[1])
                     
-                    # 3. 나비효과 거리 계산 (모든 Edge 순회)
                     for idx, row in sim_flows.iterrows():
                         u, v = row['zone'], row['next_zone']
                         if u in sim_centers and v in sim_centers:
                             old_d = calc_dist(orig_centers[u], orig_centers[v])
                             new_d = calc_dist(sim_centers[u], sim_centers[v])
                             
-                            # 거리가 변한 경우에만 재계산 (A나 B가 껴있는 동선들)
                             if old_d != new_d and old_d > 0 and new_d > 0:
                                 ratio = max(0.5, min(old_d / new_d, 2.0))
                                 new_weight = row['weight'] * ratio
-                                diff = new_weight - row['weight'] # 증감폭
+                                diff = new_weight - row['weight']
                                 
-                                # 흐름도 가중치 갱신
                                 sim_flows.at[idx, 'weight'] = int(new_weight)
                                 
-                                # 핵심! 변경된 트래픽(증감폭)을 출발지(u)와 도착지(v) 방문 횟수 전체에 공평하게 누적
                                 sim_zone_pop[u] = sim_zone_pop.get(u, 0) + diff
                                 sim_zone_pop[v] = sim_zone_pop.get(v, 0) + diff
                     
-                    # 4. 전광판에 띄울 A, B 및 주변 수혜 구역 데이터 정리
                     orig_a_traffic = zone_popularity.get(swap_a, 0)
                     sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
                     orig_b_traffic = zone_popularity.get(swap_b, 0)
@@ -450,12 +441,11 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     diff_a = sim_a_traffic - orig_a_traffic
                     diff_b = sim_b_traffic - orig_b_traffic
 
-                    # 나비효과: A와 B를 제외한 나머지 구역 중 트래픽 변화가 가장 큰 곳 찾기
-                    other_diffs = {k: int(sim_zone_pop[k]) - zone_popularity.get(k, 0) for k in ZONES.keys() if k not in [swap_a, swap_b]}
+                    # ⭐ [에러 해결 부위] .get(k, 0) 로 안전띠 장착!
+                    other_diffs = {k: int(sim_zone_pop.get(k, 0)) - zone_popularity.get(k, 0) for k in ZONES.keys() if k not in [swap_a, swap_b]}
                     top_gainer = max(other_diffs, key=other_diffs.get) if other_diffs else None
-                    top_gainer_diff = other_diffs.get(top_gainer, 0)
+                    top_gainer_diff = other_diffs.get(top_gainer, 0) if top_gainer else 0
 
-                    # ⭐ 5. 전광판 송출! (나비효과 포함)
                     st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
                     metric_col1, metric_col2, metric_col3 = st.columns(3)
                     metric_col1.metric(f"🔀 [{swap_a}] 매대 변동", f"{sim_a_traffic:,} 회", f"{diff_a:,} 회")
@@ -467,19 +457,16 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-                    # ⭐ 6. 전체 구역 방문 횟수 막대그래프 (모든 구역이 요동침!)
                     st.markdown("### 🏆 전체 구역 예상 방문 횟수 (나비효과 적용)", unsafe_allow_html=True)
                     
-                    # 새로 계산된 딕셔너리를 데이터프레임으로 변환
                     df_zones_sim = pd.DataFrame(list(sim_zone_pop.items()), columns=['구역', '방문횟수'])
-                    df_zones_sim['방문횟수'] = df_zones_sim['방문횟수'].apply(lambda x: max(0, int(x))) # 음수 방지
+                    df_zones_sim['방문횟수'] = df_zones_sim['방문횟수'].apply(lambda x: max(0, int(x))) 
                     df_zones_sim = df_zones_sim.sort_values('방문횟수', ascending=False)
 
-                    # 색상 규칙: 바뀐 매대(빨강), 나비효과 수혜자(노랑/주황), 나머지 정상(파랑)
                     def get_color(zone_name):
-                        if zone_name in [swap_a, swap_b]: return '#EF4444' # 빨강
-                        elif zone_name == top_gainer and top_gainer_diff > 0: return '#F59E0B' # 주황(강조)
-                        else: return '#93C5FD' # 파랑
+                        if zone_name in [swap_a, swap_b]: return '#EF4444' 
+                        elif zone_name == top_gainer and top_gainer_diff > 0: return '#F59E0B' 
+                        else: return '#93C5FD' 
                     
                     df_zones_sim['색상'] = df_zones_sim['구역'].apply(get_color)
 
@@ -494,7 +481,6 @@ elif menu == "🔄 매대 이동 시뮬레이터":
 
                     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-                    # 7. 시뮬레이션 네트워크 그래프 그리기 (상위 100개 동선만 시각화)
                     st.markdown("### 🕸️ 시뮬레이션 동선 흐름도 (Flow Map)")
                     top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
                     
