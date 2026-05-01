@@ -295,7 +295,7 @@ if menu == "Traffic Summary":
                         )
                         
                         text = scatter.mark_text(
-                            align='left', baseline='middle', dx=12, color='#0F172A', fontSize=12, fontWeight=600
+                            align='left', baseline='middle', dx=12, color='#F8FAFC', fontSize=12, fontWeight=600
                         ).encode(text='zone')
                         
                         hline = alt.Chart(pd.DataFrame({'y': [avg_dwell]})).mark_rule(color='#F43F5E', strokeDash=[4,4], strokeWidth=1.5).encode(y='y:Q')
