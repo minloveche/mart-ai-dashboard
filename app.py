@@ -509,7 +509,7 @@ elif menu == "Cross-Visitation":
                 df_melted = df_melted[df_melted['Co-Visitors'] > 0]
 
                 if not df_melted.empty:
-                    heatmap = alt.Chart(df_melted).mark_rect(rx=3, ry=3).encode(
+                    heatmap = alt.Chart(df_melted).mark_rect().encode(
                         x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155')),
                         y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
                         color=alt.Color('Co-Visitors:Q', scale=alt.Scale(scheme='purples'), legend=alt.Legend(title="동시 방문자 수")),
