@@ -153,7 +153,8 @@ def format_date_option(d):
     except: return str(d)
 
 st.sidebar.title("Spatial Analytics")
-main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "Cross-Visitation", "AI Operations", "Sensor Map"])
+# ⭐ 사이드바 메뉴 원상복구 (Cross-Visitation은 Traffic Summary 안으로 들어갔습니다!)
+main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
@@ -359,9 +360,49 @@ if menu == "Traffic Summary":
                             nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.9, edgecolor='#334155', boxstyle='round,pad=0.3'))
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
+
+                # ⭐ [NEW] Single Date 탭 안으로 들어온 완벽한 장바구니 연관성 분석!
+                st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
+                with st.spinner("Calculating Cross-Visitation..."):
+                    # 이미 위에서 특정 날짜로 필터링된 filtered_df를 재활용하므로 속도가 2배 빠릅니다!
+                    unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
+                    user_zone_matrix = pd.crosstab(unique_visits['real_user_id'], unique_visits['zone'])
+                    co_matrix = user_zone_matrix.T.dot(user_zone_matrix)
+                    
+                    for z in co_matrix.columns:
+                        co_matrix.loc[z, z] = 0
+
+                    df_melted = co_matrix.reset_index().melt(id_vars='zone', var_name='Target Zone', value_name='Co-Visitors')
+                    df_melted = df_melted[df_melted['Co-Visitors'] > 0]
+
+                    if not df_melted.empty:
+                        # 글자 생략 방지(labelOverlap=False) 완벽 적용!
+                        heatmap = alt.Chart(df_melted).mark_rect().encode(
+                            x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155', labelOverlap=False)),
+                            y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155', labelOverlap=False)),
+                            color=alt.Color('Co-Visitors:Q', scale=alt.Scale(scheme='purples'), legend=alt.Legend(title="동시 방문자 수")),
+                            tooltip=[
+                                alt.Tooltip('zone:N', title='기준 구역'), 
+                                alt.Tooltip('Target Zone:N', title='동시 방문 구역'), 
+                                alt.Tooltip('Co-Visitors:Q', title='겹친 방문객 수', format=',.0f')
+                            ]
+                        ).properties(height=600)
+                        
+                        st.altair_chart(heatmap, use_container_width=True)
+                        
+                        st.markdown("""
+                        <div style="background-color: #1E293B; padding: 15px; border-radius: 8px; border-left: 3px solid #8B5CF6;">
+                            💡 <b>히트맵 해석 꿀팁:</b><br>
+                            - 색상이 진한 보라색일수록 두 구역을 함께 방문한 사람이 많다는 뜻입니다.<br>
+                            - <b>활용 예시:</b> 비 오는 날짜를 선택해 보세요! [라면]과 만나는 네모 칸이 짙어진다면, 우천 시엔 파전 대신 라면 묶음 할인을 기획해 볼 수 있습니다!
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.info("해당 날짜에 겹치는 방문 데이터가 없습니다.")
+
             else: st.info("No data available for the selected parameters.")
 
-        # 다중 날짜 비교 - 마우스 호버 자동 수직선 & 수치 표시 (Crosshair)
+        # 다중 날짜 비교 (Crosshair 탑재)
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -441,7 +482,6 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
-# Heatmap Analysis 다크 모드 캔버스
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
     if df_all is not None and 'date' in df_all.columns:
@@ -480,64 +520,6 @@ elif menu == "Heatmap Analysis":
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
-
-# ⭐ [에러 완벽 해결!] 날짜 필터링이 탑재된 실시간 장바구니 연관성 분석 탭
-elif menu == "Cross-Visitation":
-    st.title("Basket & Cross-Visitation Analysis")
-    st.markdown("특정 날짜를 선택하여 고객들이 **어떤 구역을 함께 방문했는지(연관성)**를 분석합니다.")
-    
-    if df_all is not None and 'date' in df_all.columns:
-        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
-        selected_date = st.selectbox("Select Date:", ["All Dates (Cumulative)"] + available_dates, format_func=format_date_option)
-
-        with st.spinner(f"Calculating Cross-Visitation for {format_date_option(selected_date)}..."):
-            if selected_date == "All Dates (Cumulative)":
-                cv_base_df = df_all
-            else:
-                cv_base_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
-
-            if not cv_base_df.empty:
-                unique_visits = cv_base_df.drop_duplicates(subset=['real_user_id', 'zone'])
-                user_zone_matrix = pd.crosstab(unique_visits['real_user_id'], unique_visits['zone'])
-                co_matrix = user_zone_matrix.T.dot(user_zone_matrix)
-                
-                # 오류의 원인이었던 np.fill_diagonal 대신 안전한 for 반복문으로 교체했습니다!
-                for z in co_matrix.columns:
-                    co_matrix.loc[z, z] = 0
-
-                df_melted = co_matrix.reset_index().melt(id_vars='zone', var_name='Target Zone', value_name='Co-Visitors')
-                df_melted = df_melted[df_melted['Co-Visitors'] > 0]
-
-                if not df_melted.empty:
-                    heatmap = alt.Chart(df_melted).mark_rect().encode(
-                        # ⭐ labelOverlap=False 를 추가해서 글자가 생략되는 것을 막았습니다!
-                        x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155', labelOverlap=False)),
-                        y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155', labelOverlap=False)),
-                        color=alt.Color('Co-Visitors:Q', scale=alt.Scale(scheme='purples'), legend=alt.Legend(title="동시 방문자 수")),
-                        tooltip=[
-                            alt.Tooltip('zone:N', title='기준 구역'), 
-                            alt.Tooltip('Target Zone:N', title='동시 방문 구역'), 
-                            alt.Tooltip('Co-Visitors:Q', title='겹친 방문객 수', format=',.0f')
-                        ]
-                    ).properties(height=600)
-                    
-                    nice_title_date = format_date_option(selected_date)
-                    st.markdown(f"<br>#### Cross-Visitation Matrix ({nice_title_date})", unsafe_allow_html=True)
-                    st.altair_chart(heatmap, use_container_width=True)
-                    
-                    st.markdown("""
-                    <div style="background-color: #1E293B; padding: 15px; border-radius: 8px; border-left: 3px solid #8B5CF6;">
-                        💡 <b>히트맵 해석 꿀팁:</b><br>
-                        - 색상이 진한 보라색일수록 두 구역을 함께 방문한 사람이 많다는 뜻입니다.<br>
-                        - <b>활용 예시:</b> 비 오는 날짜를 선택해 보세요! [라면]과 만나는 네모 칸이 짙어진다면, 우천 시엔 파전 대신 라면 묶음 할인을 기획해 볼 수 있습니다!
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.info("선택한 날짜에 겹치는 방문 데이터가 없습니다.")
-            else:
-                st.info("해당 날짜의 트래픽 데이터가 없습니다.")
-    else:
-        st.error("데이터를 불러올 수 없습니다. 트래픽 요약 탭에서 데이터가 정상인지 확인해 주세요.")
 
 elif menu == "Demand Forecast":
     st.title("Demand Forecast")
