@@ -231,7 +231,8 @@ if menu == "📊 트래픽 요약":
                         for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                         pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                         
-                        fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
+                        # ⭐ 수정됨: facecolor='white' 추가하여 배경을 강제로 하얗게 만듭니다!
+                        fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
                         img_path = 'map_image.jpg'
                         try:
                             img = mpimg.imread(img_path)
@@ -502,7 +503,8 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
                     for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                     
-                    fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150)
+                    # ⭐ 수정됨: facecolor='white' 추가하여 배경을 강제로 하얗게 만듭니다!
+                    fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
                     if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.5)
                     else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
                     
