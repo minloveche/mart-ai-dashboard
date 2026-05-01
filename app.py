@@ -183,6 +183,7 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
+                # OS 전광판 출력 로직
                 if df_os is not None:
                     if selected_date == "All Dates (Cumulative)":
                         os_filtered = df_os
@@ -264,7 +265,9 @@ if menu == "Traffic Summary":
                             for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
-                            fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
+                            fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
+                            # ⭐ 지도의 배경을 완벽한 흰색으로 강제 적용
+                            fig_flow.patch.set_facecolor('white')
                             ax_flow.set_facecolor('white')
                             img_path = 'map_image.jpg'
                             try:
@@ -282,7 +285,8 @@ if menu == "Traffic Summary":
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
                             nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
                             ax_flow.axis('off')
-                            st.pyplot(fig_flow, theme=None)
+                            # ⭐ 에러를 일으켰던 theme=None을 제거하고, 저장 시 강제로 흰색 배경(facecolor)을 주입합니다.
+                            st.pyplot(fig_flow, facecolor='white')
             else: st.info("No data available for the selected parameters.")
 
         with tab2:
@@ -365,7 +369,8 @@ elif menu == "Heatmap Analysis":
                 blur_sigma = st.slider("Diffusion (Sigma)", 1.0, 10.0, 4.0, step=0.5)
                 red_sens = st.slider("Sensitivity", 1, 50, 15, step=1)
             with col2:
-                fig, ax = plt.subplots(figsize=(10, 7), dpi=100, facecolor='white')
+                fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
+                fig.patch.set_facecolor('white')
                 ax.set_facecolor('white')
                 
                 if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.5)
@@ -382,7 +387,8 @@ elif menu == "Heatmap Analysis":
                     max_val = np.max(heatmap_smoothed)
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
-                    st.pyplot(fig, theme=None)
+                    # ⭐ 에러 제거
+                    st.pyplot(fig, facecolor='white')
 
 elif menu == "Demand Forecast":
     st.title("Demand Forecast")
@@ -549,7 +555,8 @@ elif menu == "Layout Simulator":
                     for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
                     for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                     
-                    fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
+                    fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150)
+                    fig_sim.patch.set_facecolor('white')
                     ax_sim.set_facecolor('white')
                     if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.5)
                     else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
@@ -573,7 +580,8 @@ elif menu == "Layout Simulator":
                     nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
                     
                     ax_sim.axis('off')
-                    st.pyplot(fig_sim, theme=None)
+                    # ⭐ 에러 제거
+                    st.pyplot(fig_sim, facecolor='white')
 
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
@@ -608,12 +616,14 @@ elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
     try:
         sward_df = pd.read_csv('swards (1).csv')
-        fig, ax = plt.subplots(figsize=(10, 7), dpi=200, facecolor='white')
+        fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
+        fig.patch.set_facecolor('white')
         ax.set_facecolor('white')
         if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.5)
         else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
         ax.scatter(sward_df['x'], sward_df['y'], color='#F43F5E', s=55, edgecolors='black', linewidth=1, zorder=2)
         for _, row in sward_df.iterrows(): ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8, color='black', fontweight='bold')
         ax.axis('off')
-        st.pyplot(fig, theme=None)
+        # ⭐ 에러 제거
+        st.pyplot(fig, facecolor='white')
     except: st.error("Sensor configuration file not found.")
