@@ -21,8 +21,10 @@ try:
 except ImportError:
     HAS_GENAI = False
 
+# --- [1. 기본 설정 및 다크모드 폰트] ---
 st.set_page_config(page_title="Retail Spatial Analytics", layout="wide")
 
+# Altair 및 Matplotlib 다크 테마 적용
 alt.themes.enable('dark')
 plt.style.use('dark_background')
 
@@ -40,26 +42,59 @@ else:
         plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
+# ⭐ 드롭다운 메뉴(팝오버) 다크모드 CSS 완벽 패치 적용
 custom_css = """
 <style>
+    /* 전체 배경 및 텍스트 */
     .stApp { background-color: #0F172A; color: #F8FAFC; }
+    
+    /* 사이드바 */
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     [data-testid="stSidebar"] * { color: #F8FAFC !important; }
+    
+    /* 제목 및 폰트 */
     h1, h2, h3, h4 { color: #F8FAFC !important; font-weight: 700 !important; letter-spacing: -0.5px; }
     p, span, div { color: #CBD5E1; }
+    
+    /* Metric 및 컨테이너 박스 */
     [data-testid="stMetric"], [data-testid="stVerticalBlockBorderWrapper"], div[data-testid="stContainer"] { 
-        background-color: #1E293B !important; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4); border: 1px solid #334155 !important; text-align: center; 
+        background-color: #1E293B !important; 
+        padding: 20px; 
+        border-radius: 8px; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4); 
+        border: 1px solid #334155 !important; 
+        text-align: center; 
     }
     [data-testid="stMetricLabel"] { font-size: 14px; color: #94A3B8 !important; font-weight: 500; }
     [data-testid="stMetricValue"] { font-size: 32px; color: #38BDF8 !important; font-weight: 700; }
+    
+    /* 탭 디자인 커스텀 */
     .stTabs [data-baseweb="tab-list"] { gap: 20px; }
     .stTabs [data-baseweb="tab"] { font-size: 16px; font-weight: 600; color: #64748B; padding: 10px 20px; }
     .stTabs [aria-selected="true"] { color: #38BDF8; border-bottom-color: #38BDF8; }
-    div[data-baseweb="popover"] > div, ul[data-baseweb="menu"] { background-color: #1E293B !important; border: 1px solid #334155 !important; }
-    li[role="option"] { background-color: #1E293B !important; color: #F8FAFC !important; }
-    li[role="option"]:hover, li[aria-selected="true"] { background-color: #334155 !important; color: #38BDF8 !important; }
-    div[data-baseweb="select"] > div { background-color: #0F172A !important; border-color: #334155 !important; color: #F8FAFC !important; }
-    div[data-baseweb="select"] span { color: #F8FAFC !important; }
+    
+    /* ⭐ 셀렉트박스 드롭다운 메뉴 완벽 다크모드 적용 */
+    div[data-baseweb="popover"] > div,
+    ul[data-baseweb="menu"] {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+    }
+    li[role="option"] {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+    }
+    li[role="option"]:hover, li[aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #38BDF8 !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: #0F172A !important;
+        border-color: #334155 !important;
+        color: #F8FAFC !important;
+    }
+    div[data-baseweb="select"] span {
+        color: #F8FAFC !important;
+    }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -114,7 +149,7 @@ def load_weather():
         except: pass
     return weather_dict
 
-# ⭐ 초경량 요약본 CSV를 읽어오는 함수로 변경
+# ⭐ 초경량 요약본 CSV를 읽어오는 함수
 @st.cache_data
 def load_os_summary():
     if os.path.exists("os_summary.csv"):
@@ -184,7 +219,7 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
-                # ⭐ 메모리 터짐 방지: 가벼운 영수증 데이터로만 비율 계산
+                # ⭐ OS 비율 전광판
                 if df_os is not None:
                     if selected_date == "All Dates (Cumulative)":
                         android_count = df_os[df_os['os'] == 'Android']['count'].sum()
@@ -213,7 +248,8 @@ if menu == "Traffic Summary":
                         </div>
                         """, unsafe_allow_html=True)
                 
-                st.markdown("<br>#### Time-Series Traffic", unsafe_allow_html=True)
+                # ⭐ 새롭게 적용된 '고급 시계열 트렌드 차트' 구간!
+                st.markdown("<br>#### Time-Series Traffic (Advanced Trend Analysis)", unsafe_allow_html=True)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     if selected_date == "All Dates (Cumulative)":
@@ -222,16 +258,58 @@ if menu == "Traffic Summary":
                     else:
                         plot_data = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
                         y_title = 'Concurrent Visitors'
+                    
                     if not plot_data.empty:
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
-                        chart = alt.Chart(plot_data).mark_area(interpolate='monotone', color='#38BDF8', opacity=0.3).encode(
+                        
+                        # 1. 스무딩(Smoothing): 이동평균선(Moving Average) 계산
+                        plot_data['Trend'] = plot_data['visitors'].rolling(window=3, min_periods=1).mean()
+                        
+                        # 2. 피크타임(Peak Detection): 최다 방문객 시점 자동 추출
+                        peak_row = plot_data.loc[plot_data['visitors'].idxmax()]
+                        peak_time = peak_row['Time']
+                        peak_val = peak_row['visitors']
+
+                        # --- [알타이어(Altair) 고급 복합 차트 구성] ---
+                        # 레이어 A: 원본 데이터 (연한 파란색 배경 영역)
+                        area_chart = alt.Chart(plot_data).mark_area(
+                            interpolate='monotone', color='#38BDF8', opacity=0.15
+                        ).encode(
                             x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', gridColor='#334155', domainColor='#334155')),
-                            y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            tooltip=[alt.Tooltip('Time:T', format='%H:%M'), alt.Tooltip('visitors:Q', title='Visitors')]
-                        ) + alt.Chart(plot_data).mark_line(interpolate='monotone', color='#38BDF8', strokeWidth=2).encode(x=alt.X('Time:T'), y=alt.Y('visitors:Q'))
-                        st.altair_chart(chart.properties(height=350), use_container_width=True)
-                except: pass
+                            y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(gridColor='#334155', domainColor='#334155'))
+                        )
+                        
+                        # 레이어 B: 트렌드 라인 (진하고 굵은 스무딩 곡선)
+                        line_chart = alt.Chart(plot_data).mark_line(
+                            interpolate='monotone', color='#38BDF8', strokeWidth=3.5
+                        ).encode(
+                            x='Time:T',
+                            y='Trend:Q',
+                            tooltip=[
+                                alt.Tooltip('Time:T', format='%H:%M', title='Time'), 
+                                alt.Tooltip('visitors:Q', title='Raw Visitors'),
+                                alt.Tooltip('Trend:Q', format='.1f', title='Trend (Avg)')
+                            ]
+                        )
+                        
+                        # 레이어 C: 피크타임 강조 포인트 (빨간색 점)
+                        peak_point = alt.Chart(pd.DataFrame({'Time': [peak_time], 'visitors': [peak_val]})).mark_circle(
+                            size=120, color='#F43F5E', opacity=1
+                        ).encode(x='Time:T', y='visitors:Q')
+                        
+                        # 레이어 C-2: 피크타임 텍스트 라벨 (수치 표시)
+                        peak_text = alt.Chart(pd.DataFrame({'Time': [peak_time], 'visitors': [peak_val]})).mark_text(
+                            align='left', baseline='middle', dx=12, dy=-12, color='#F43F5E', fontSize=14, fontWeight='bold',
+                            text=f'🔥 Peak: {peak_val:.0f}'
+                        ).encode(x='Time:T', y='visitors:Q')
+                        
+                        # 모든 레이어를 하나로 결합
+                        final_combo_chart = (area_chart + line_chart + peak_point + peak_text).properties(height=350)
+                        
+                        st.altair_chart(final_combo_chart, use_container_width=True)
+                except Exception as e: 
+                    st.error(f"Chart Render Error: {e}")
                 
                 st.markdown("<br>#### Zone Distribution", unsafe_allow_html=True)
                 df_zones = filtered_df['zone'].value_counts().reset_index()
