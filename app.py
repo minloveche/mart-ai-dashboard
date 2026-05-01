@@ -25,7 +25,7 @@ except ImportError:
 st.set_page_config(page_title="Retail Spatial Analytics", layout="wide")
 
 # Altair 및 Matplotlib 다크 테마 적용
-alt.themes.enable('dark')
+alt.theme.enable('dark')
 plt.style.use('dark_background')
 
 if platform.system() == 'Windows':
@@ -42,59 +42,26 @@ else:
         plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# ⭐ 드롭다운 메뉴(팝오버) 다크모드 CSS 완벽 패치 적용
 custom_css = """
 <style>
-    /* 전체 배경 및 텍스트 */
     .stApp { background-color: #0F172A; color: #F8FAFC; }
-    
-    /* 사이드바 */
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     [data-testid="stSidebar"] * { color: #F8FAFC !important; }
-    
-    /* 제목 및 폰트 */
     h1, h2, h3, h4 { color: #F8FAFC !important; font-weight: 700 !important; letter-spacing: -0.5px; }
     p, span, div { color: #CBD5E1; }
-    
-    /* Metric 및 컨테이너 박스 */
     [data-testid="stMetric"], [data-testid="stVerticalBlockBorderWrapper"], div[data-testid="stContainer"] { 
-        background-color: #1E293B !important; 
-        padding: 20px; 
-        border-radius: 8px; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4); 
-        border: 1px solid #334155 !important; 
-        text-align: center; 
+        background-color: #1E293B !important; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4); border: 1px solid #334155 !important; text-align: center; 
     }
     [data-testid="stMetricLabel"] { font-size: 14px; color: #94A3B8 !important; font-weight: 500; }
     [data-testid="stMetricValue"] { font-size: 32px; color: #38BDF8 !important; font-weight: 700; }
-    
-    /* 탭 디자인 커스텀 */
     .stTabs [data-baseweb="tab-list"] { gap: 20px; }
     .stTabs [data-baseweb="tab"] { font-size: 16px; font-weight: 600; color: #64748B; padding: 10px 20px; }
     .stTabs [aria-selected="true"] { color: #38BDF8; border-bottom-color: #38BDF8; }
-    
-    /* ⭐ 셀렉트박스 드롭다운 메뉴 완벽 다크모드 적용 */
-    div[data-baseweb="popover"] > div,
-    ul[data-baseweb="menu"] {
-        background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
-    }
-    li[role="option"] {
-        background-color: #1E293B !important;
-        color: #F8FAFC !important;
-    }
-    li[role="option"]:hover, li[aria-selected="true"] {
-        background-color: #334155 !important;
-        color: #38BDF8 !important;
-    }
-    div[data-baseweb="select"] > div {
-        background-color: #0F172A !important;
-        border-color: #334155 !important;
-        color: #F8FAFC !important;
-    }
-    div[data-baseweb="select"] span {
-        color: #F8FAFC !important;
-    }
+    div[data-baseweb="popover"] > div, ul[data-baseweb="menu"] { background-color: #1E293B !important; border: 1px solid #334155 !important; }
+    li[role="option"] { background-color: #1E293B !important; color: #F8FAFC !important; }
+    li[role="option"]:hover, li[aria-selected="true"] { background-color: #334155 !important; color: #38BDF8 !important; }
+    div[data-baseweb="select"] > div { background-color: #0F172A !important; border-color: #334155 !important; color: #F8FAFC !important; }
+    div[data-baseweb="select"] span { color: #F8FAFC !important; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -149,7 +116,6 @@ def load_weather():
         except: pass
     return weather_dict
 
-# ⭐ 초경량 요약본 CSV를 읽어오는 함수
 @st.cache_data
 def load_os_summary():
     if os.path.exists("os_summary.csv"):
@@ -219,7 +185,7 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
-                # ⭐ OS 비율 전광판
+                # ⭐ 1. OS 비율 전광판
                 if df_os is not None:
                     if selected_date == "All Dates (Cumulative)":
                         android_count = df_os[df_os['os'] == 'Android']['count'].sum()
@@ -248,7 +214,7 @@ if menu == "Traffic Summary":
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # ⭐ 새롭게 적용된 '고급 시계열 트렌드 차트' 구간!
+                # ⭐ 2. 수직선 탑재 고급 트렌드 차트
                 st.markdown("<br>#### Time-Series Traffic (Advanced Trend Analysis)", unsafe_allow_html=True)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
@@ -263,24 +229,19 @@ if menu == "Traffic Summary":
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
                         
-                        # 1. 스무딩(Smoothing): 이동평균선(Moving Average) 계산
                         plot_data['Trend'] = plot_data['visitors'].rolling(window=3, min_periods=1).mean()
                         
-                        # 2. 피크타임(Peak Detection): 최다 방문객 시점 자동 추출
                         peak_row = plot_data.loc[plot_data['visitors'].idxmax()]
                         peak_time = peak_row['Time']
                         peak_val = peak_row['visitors']
 
-                        # --- [알타이어(Altair) 고급 복합 차트 구성] ---
-                        # 레이어 A: 원본 데이터 (연한 파란색 배경 영역)
                         area_chart = alt.Chart(plot_data).mark_area(
                             interpolate='monotone', color='#38BDF8', opacity=0.15
                         ).encode(
-                            x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', gridColor='#334155', domainColor='#334155')),
+                            x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                             y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(gridColor='#334155', domainColor='#334155'))
                         )
                         
-                        # 레이어 B: 트렌드 라인 (진하고 굵은 스무딩 곡선)
                         line_chart = alt.Chart(plot_data).mark_line(
                             interpolate='monotone', color='#38BDF8', strokeWidth=3.5
                         ).encode(
@@ -293,35 +254,70 @@ if menu == "Traffic Summary":
                             ]
                         )
                         
-                        # 레이어 C: 피크타임 강조 포인트 (빨간색 점)
                         peak_point = alt.Chart(pd.DataFrame({'Time': [peak_time], 'visitors': [peak_val]})).mark_circle(
                             size=120, color='#F43F5E', opacity=1
                         ).encode(x='Time:T', y='visitors:Q')
                         
-                        # 레이어 C-2: 피크타임 텍스트 라벨 (수치 표시)
                         peak_text = alt.Chart(pd.DataFrame({'Time': [peak_time], 'visitors': [peak_val]})).mark_text(
                             align='left', baseline='middle', dx=12, dy=-12, color='#F43F5E', fontSize=14, fontWeight='bold',
                             text=f'🔥 Peak: {peak_val:.0f}'
                         ).encode(x='Time:T', y='visitors:Q')
                         
-                        # 모든 레이어를 하나로 결합
                         final_combo_chart = (area_chart + line_chart + peak_point + peak_text).properties(height=350)
-                        
                         st.altair_chart(final_combo_chart, use_container_width=True)
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                st.markdown("<br>#### Zone Distribution", unsafe_allow_html=True)
-                df_zones = filtered_df['zone'].value_counts().reset_index()
-                df_zones.columns = ['Zone', 'Visits']
-                bars = alt.Chart(df_zones).mark_bar(cornerRadiusEnd=3, height=18).encode(
-                    x=alt.X('Visits:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                    y=alt.Y('Zone:N', sort='-x', title='', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                    color=alt.Color('Visits:Q', scale=alt.Scale(scheme='blues'), legend=None),
-                    tooltip=['Zone', 'Visits']
-                )
-                st.altair_chart(bars.properties(height=alt.Step(25)), use_container_width=True)
+                # ⭐ 3. 드디어! 찐 체류시간 4사분면 차트 (Magic Quadrant)
+                st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
+                with st.spinner("Calculating Dwell Times..."):
+                    if 'stay_sec' in filtered_df.columns:
+                        zone_stats = filtered_df.groupby('zone').agg(
+                            Visitors=('real_user_id', 'nunique'),
+                            Avg_Dwell_Time=('stay_sec', lambda x: x.mean() / 60.0) 
+                        ).reset_index()
+                    else:
+                        zone_user_stats = filtered_df.groupby(['zone', 'real_user_id']).size().reset_index(name='log_count')
+                        zone_user_stats['dwell_time_min'] = (zone_user_stats['log_count'] * 10) / 60.0 
+                        zone_stats = zone_user_stats.groupby('zone').agg(
+                            Visitors=('real_user_id', 'nunique'),
+                            Avg_Dwell_Time=('dwell_time_min', 'mean')
+                        ).reset_index()
+
+                    if not zone_stats.empty:
+                        avg_vis = zone_stats['Visitors'].mean()
+                        avg_dwell = zone_stats['Avg_Dwell_Time'].mean()
+                        
+                        scatter = alt.Chart(zone_stats).mark_circle(size=250, opacity=0.8, color='#8B5CF6').encode(
+                            x=alt.X('Visitors:Q', title='Unique Visitors (인기도)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            y=alt.Y('Avg_Dwell_Time:Q', title='Average Dwell Time [Min] (체류시간)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            tooltip=['zone', 'Visitors', alt.Tooltip('Avg_Dwell_Time:Q', format='.1f', title='Dwell Time (Min)')]
+                        )
+                        
+                        text = scatter.mark_text(
+                            align='left', baseline='middle', dx=12, color='#F8FAFC', fontSize=12, fontWeight=500
+                        ).encode(text='zone')
+                        
+                        hline = alt.Chart(pd.DataFrame({'y': [avg_dwell]})).mark_rule(color='#F43F5E', strokeDash=[4,4], strokeWidth=1.5).encode(y='y:Q')
+                        vline = alt.Chart(pd.DataFrame({'x': [avg_vis]})).mark_rule(color='#F43F5E', strokeDash=[4,4], strokeWidth=1.5).encode(x='x:Q')
+                        
+                        quadrant_chart = (scatter + text + hline + vline).properties(height=450)
+                        
+                        st.markdown("""
+                        <div style="background-color: #1E293B; padding: 10px 15px; border-radius: 8px; border-left: 3px solid #8B5CF6; margin-bottom: 10px;">
+                            <span style="color: #94A3B8; font-size: 13px;">
+                            💡 <b>해석 방법:</b> 십자선(빨간 점선)은 전체 평균입니다. <br>
+                            - <b>우상단:</b> 방문객도 많고 오래 머무는 <b>핵심 매출 구역 (Golden Zone)</b><br>
+                            - <b>우하단:</b> 스쳐 지나가는 <b>통로 구역</b> (충동구매 상품 배치 권장)<br>
+                            - <b>좌상단:</b> 소수 마니아가 꼼꼼히 고르는 <b>목적 구매 구역</b><br>
+                            - <b>좌하단:</b> 방문객도 없고 빨리 나가는 <b>개선 필요 구역 (Dead Zone)</b>
+                            </span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.altair_chart(quadrant_chart, use_container_width=True)
                 
+                # ⭐ 4. 고객 동선 맵
                 st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
                 with st.spinner("Rendering flow map..."):
                     flow_df = filtered_df.copy()
@@ -394,7 +390,7 @@ if menu == "Traffic Summary":
                             interpolate='monotone', 
                             strokeWidth=3
                         ).encode(
-                            x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', gridColor='#334155', domainColor='#334155')),
+                            x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                             y=alt.Y('visitors:Q', title='Visitors', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
                             color=alt.Color('Label:N', title='Legend (Click to Isolate)', scale=alt.Scale(scheme='set2')),
                             opacity=alt.condition(highlight, alt.value(1.0), alt.value(0.1)),
@@ -510,7 +506,7 @@ elif menu == "Demand Forecast":
                     chart = alt.Chart(pred_curve).mark_area(
                         interpolate='monotone', color='#8B5CF6', opacity=0.3
                     ).encode(
-                        x=alt.X('Time:T', axis=alt.Axis(format='%H:%M', gridColor='#334155', domainColor='#334155')),
+                        x=alt.X('Time:T', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                         y=alt.Y('Expected Visitors:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155'))
                     ) + alt.Chart(pred_curve).mark_line(
                         interpolate='monotone', color='#A78BFA', strokeWidth=2
