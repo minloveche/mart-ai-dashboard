@@ -42,6 +42,7 @@ else:
         plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
+# ⭐ 드롭다운 메뉴(팝오버) 다크모드 CSS 완벽 패치 적용
 custom_css = """
 <style>
     /* 전체 배경 및 텍스트 */
@@ -72,7 +73,7 @@ custom_css = """
     .stTabs [data-baseweb="tab"] { font-size: 16px; font-weight: 600; color: #64748B; padding: 10px 20px; }
     .stTabs [aria-selected="true"] { color: #38BDF8; border-bottom-color: #38BDF8; }
     
-    /* 셀렉트박스 드롭다운 메뉴 완벽 다크모드 적용 */
+    /* ⭐ 셀렉트박스 드롭다운 메뉴 완벽 다크모드 적용 */
     div[data-baseweb="popover"] > div,
     ul[data-baseweb="menu"] {
         background-color: #1E293B !important;
@@ -148,18 +149,8 @@ def load_weather():
         except: pass
     return weather_dict
 
-@st.cache_data
-def load_os_data():
-    if os.path.exists("os_traffic_light.parquet"):
-        try:
-            return pd.read_parquet("os_traffic_light.parquet")
-        except:
-            return None
-    return None
-
 df_all = load_all_sessions()
 weather_info = load_weather()
-df_os = load_os_data()
 
 def safe_date_match(val, target):
     if '-' in str(val) and '-' in str(target): return str(val).strip() == str(target).strip()
@@ -217,36 +208,6 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
-                if df_os is not None:
-                    if selected_date == "All Dates (Cumulative)":
-                        os_filtered = df_os
-                    else:
-                        os_filtered = df_os[df_os['date'].apply(lambda x: safe_date_match(x, selected_date))]
-                    
-                    if not os_filtered.empty:
-                        os_counts = os_filtered['os'].value_counts()
-                        android_count = os_counts.get('Android', 0)
-                        iphone_count = os_counts.get('iPhone', 0)
-                        total_os = android_count + iphone_count
-                        
-                        if total_os > 0:
-                            android_pct = (android_count / total_os) * 100
-                            iphone_pct = (iphone_count / total_os) * 100
-                            
-                            st.markdown("<br>#### Device OS Distribution", unsafe_allow_html=True)
-                            st.markdown(f"""
-                            <div style="background-color: #1E293B; padding: 15px 25px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 10px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                    <span style="color: #38BDF8; font-weight: 700; font-size: 15px;">🤖 Android {android_pct:.1f}% <span style="color:#94A3B8; font-weight:500;">({android_count:,})</span></span>
-                                    <span style="color: #F8FAFC; font-weight: 700; font-size: 15px;">🍏 iPhone {iphone_pct:.1f}% <span style="color:#94A3B8; font-weight:500;">({iphone_count:,})</span></span>
-                                </div>
-                                <div style="width: 100%; background-color: #334155; border-radius: 10px; height: 14px; display: flex; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);">
-                                    <div style="width: {android_pct}%; background-color: #38BDF8; height: 100%; transition: width 0.5s ease-in-out;"></div>
-                                    <div style="width: {iphone_pct}%; background-color: #F8FAFC; height: 100%; transition: width 0.5s ease-in-out;"></div>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                
                 st.markdown("<br>#### Time-Series Traffic", unsafe_allow_html=True)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
@@ -278,6 +239,7 @@ if menu == "Traffic Summary":
                 )
                 st.altair_chart(bars.properties(height=alt.Step(25)), use_container_width=True)
                 
+                # ⭐ 수정된 부분: Customer Flow Map 밝고 뚜렷하게 복구
                 st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
                 with st.spinner("Rendering flow map..."):
                     flow_df = filtered_df.copy()
@@ -298,6 +260,7 @@ if menu == "Traffic Summary":
                             for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
+                            # 배경 흰색, 도면 밝기(alpha=0.5) 복구
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
                             ax_flow.set_facecolor('white')
                             img_path = 'map_image.jpg'
@@ -312,6 +275,7 @@ if menu == "Traffic Summary":
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
                             edge_widths = [(G[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G.edges()]
                             
+                            # 글씨 검은색, 엣지 주황색/파란색으로 선명하게
                             nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
                             nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
@@ -576,6 +540,7 @@ elif menu == "Layout Simulator":
                     )
                     st.altair_chart(bars.properties(height=alt.Step(22)), use_container_width=True)
 
+                    # ⭐ 수정된 부분: Simulated Flow Graph 밝고 뚜렷하게 복구
                     st.markdown("#### Simulated Flow Graph")
                     top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
                     
@@ -638,6 +603,7 @@ elif menu == "LLM Assistant":
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             except KeyError: st.error("API Key not found in st.secrets.")
 
+# ⭐ 수정된 부분: Sensor Map 밝고 뚜렷하게 복구
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
     try:
