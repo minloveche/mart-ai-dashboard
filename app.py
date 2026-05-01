@@ -271,7 +271,7 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # ⭐ 찐 체류시간 4사분면 차트 (Magic Quadrant)
+                # 찐 체류시간 4사분면 차트 (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating Dwell Times..."):
                     if 'stay_sec' in filtered_df.columns:
@@ -307,8 +307,8 @@ if menu == "Traffic Summary":
                         quadrant_chart = (scatter + text + hline + vline).properties(height=450)
                         st.altair_chart(quadrant_chart, use_container_width=True)
                         
-                        # ✅ [UX 개선] 4사분면 차트 가이드를 접기/펴기 메뉴로 깔끔하게 숨겼습니다!
-                        with st.expander("💡 차트 해석 가이드 (클릭하여 펼치기)"):
+                        # ⭐ [수정됨] 제목을 군더더기 없이 '💡 Tip'으로 변경했습니다!
+                        with st.expander("💡 Tip"):
                             st.markdown("""
                             **십자선(빨간 점선)은 전체 평균을 의미합니다.**
                             - **우상단 (Golden Zone):** 방문객도 많고 오래 머무는 핵심 매출 구역
@@ -360,7 +360,7 @@ if menu == "Traffic Summary":
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
-                # ⭐ Single Date 탭 안으로 들어온 완벽한 장바구니 연관성 분석!
+                # Single Date 탭 안으로 들어온 완벽한 장바구니 연관성 분석!
                 st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
                 with st.spinner("Calculating Cross-Visitation..."):
                     unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
@@ -374,7 +374,6 @@ if menu == "Traffic Summary":
                     df_melted = df_melted[df_melted['Co-Visitors'] > 0]
 
                     if not df_melted.empty:
-                        # 텍스트 생략 방지(labelOverlap=False) 적용
                         heatmap = alt.Chart(df_melted).mark_rect().encode(
                             x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155', labelOverlap=False)),
                             y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155', labelOverlap=False)),
@@ -388,8 +387,8 @@ if menu == "Traffic Summary":
                         
                         st.altair_chart(heatmap, use_container_width=True)
                         
-                        # ✅ [UX 개선] 히트맵 해석 가이드를 접기/펴기 메뉴로 깔끔하게 숨겼습니다!
-                        with st.expander("💡 히트맵 해석 및 활용 꿀팁 (클릭하여 펼치기)"):
+                        # ⭐ [수정됨] 제목을 군더더기 없이 '💡 Tip'으로 변경했습니다!
+                        with st.expander("💡 Tip"):
                             st.markdown("""
                             - **색상의 의미:** 색상이 진한 보라색일수록 두 구역을 함께 방문한 고객이 많다는 뜻입니다.
                             - **인사이트 도출:** 비 오는 날짜를 선택했을 때 특정 상품군(예: 라면-주류)의 색상이 짙어진다면, 해당 조합의 묶음 할인을 기획하거나 매대를 가깝게 배치하여 크로스셀링(Cross-selling)을 유도할 수 있습니다.
