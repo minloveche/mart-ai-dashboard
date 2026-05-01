@@ -303,8 +303,8 @@ if menu == "Traffic Summary":
                         avg_dwell = zone_stats['Avg_Dwell_Time'].mean()
                         
                         scatter = alt.Chart(zone_stats).mark_circle(size=250, opacity=0.8, color='#8B5CF6').encode(
-                            x=alt.X('Visitors:Q', title='Unique Visitors (인기도)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            y=alt.Y('Avg_Dwell_Time:Q', title='True Dwell Time [Min] (찐 체류시간)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            x=alt.X('Visitors:Q', title='Unique Visitors ', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            y=alt.Y('Avg_Dwell_Time:Q', title='True Dwell Time [Min] ', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
                             tooltip=['zone', 'Visitors', alt.Tooltip('Avg_Dwell_Time:Q', format='.1f', title='True Dwell Time (Min)')]
                         )
                         
