@@ -62,6 +62,9 @@ custom_css = """
     li[role="option"]:hover, li[aria-selected="true"] { background-color: #334155 !important; color: #38BDF8 !important; }
     div[data-baseweb="select"] > div { background-color: #0F172A !important; border-color: #334155 !important; color: #F8FAFC !important; }
     div[data-baseweb="select"] span { color: #F8FAFC !important; }
+    /* 아코디언(expander) 디자인 깔끔하게 튜닝 */
+    [data-testid="stExpander"] { background-color: #1E293B; border: 1px solid #334155; border-radius: 8px; }
+    [data-testid="stExpander"] summary p { font-weight: 600; color: #38BDF8; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -153,7 +156,6 @@ def format_date_option(d):
     except: return str(d)
 
 st.sidebar.title("Spatial Analytics")
-# ⭐ 사이드바 메뉴 원상복구 (Cross-Visitation은 Traffic Summary 안으로 들어갔습니다!)
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -269,7 +271,7 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # 찐 체류시간 4사분면 차트 (Magic Quadrant)
+                # ⭐ 찐 체류시간 4사분면 차트 (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating Dwell Times..."):
                     if 'stay_sec' in filtered_df.columns:
@@ -303,20 +305,17 @@ if menu == "Traffic Summary":
                         vline = alt.Chart(pd.DataFrame({'x': [avg_vis]})).mark_rule(color='#F43F5E', strokeDash=[4,4], strokeWidth=1.5).encode(x='x:Q')
                         
                         quadrant_chart = (scatter + text + hline + vline).properties(height=450)
-                        
-                        st.markdown("""
-                        <div style="background-color: #1E293B; padding: 10px 15px; border-radius: 8px; border-left: 3px solid #8B5CF6; margin-bottom: 10px;">
-                            <span style="color: #94A3B8; font-size: 13px;">
-                            💡 <b>해석 방법:</b> 십자선(빨간 점선)은 전체 평균입니다. <br>
-                            - <b>우상단:</b> 방문객도 많고 오래 머무는 <b>핵심 매출 구역 (Golden Zone)</b><br>
-                            - <b>우하단:</b> 스쳐 지나가는 <b>통로 구역</b> (충동구매 상품 배치 권장)<br>
-                            - <b>좌상단:</b> 소수 마니아가 꼼꼼히 고르는 <b>목적 구매 구역</b><br>
-                            - <b>좌하단:</b> 방문객도 없고 빨리 나가는 <b>개선 필요 구역 (Dead Zone)</b>
-                            </span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
                         st.altair_chart(quadrant_chart, use_container_width=True)
+                        
+                        # ✅ [UX 개선] 4사분면 차트 가이드를 접기/펴기 메뉴로 깔끔하게 숨겼습니다!
+                        with st.expander("💡 차트 해석 가이드 (클릭하여 펼치기)"):
+                            st.markdown("""
+                            **십자선(빨간 점선)은 전체 평균을 의미합니다.**
+                            - **우상단 (Golden Zone):** 방문객도 많고 오래 머무는 핵심 매출 구역
+                            - **우하단 (통로 구역):** 스쳐 지나가는 통로 (충동구매 상품 배치 권장)
+                            - **좌상단 (목적 구매 구역):** 소수 마니아가 꼼꼼히 고르는 구역
+                            - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
+                            """)
                 
                 # 고객 동선 맵 (완벽한 다크 모드 캔버스)
                 st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
@@ -361,10 +360,9 @@ if menu == "Traffic Summary":
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
-                # ⭐ [NEW] Single Date 탭 안으로 들어온 완벽한 장바구니 연관성 분석!
+                # ⭐ Single Date 탭 안으로 들어온 완벽한 장바구니 연관성 분석!
                 st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
                 with st.spinner("Calculating Cross-Visitation..."):
-                    # 이미 위에서 특정 날짜로 필터링된 filtered_df를 재활용하므로 속도가 2배 빠릅니다!
                     unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
                     user_zone_matrix = pd.crosstab(unique_visits['real_user_id'], unique_visits['zone'])
                     co_matrix = user_zone_matrix.T.dot(user_zone_matrix)
@@ -376,7 +374,7 @@ if menu == "Traffic Summary":
                     df_melted = df_melted[df_melted['Co-Visitors'] > 0]
 
                     if not df_melted.empty:
-                        # 글자 생략 방지(labelOverlap=False) 완벽 적용!
+                        # 텍스트 생략 방지(labelOverlap=False) 적용
                         heatmap = alt.Chart(df_melted).mark_rect().encode(
                             x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155', labelOverlap=False)),
                             y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155', labelOverlap=False)),
@@ -390,13 +388,13 @@ if menu == "Traffic Summary":
                         
                         st.altair_chart(heatmap, use_container_width=True)
                         
-                        st.markdown("""
-                        <div style="background-color: #1E293B; padding: 15px; border-radius: 8px; border-left: 3px solid #8B5CF6;">
-                            💡 <b>히트맵 해석 꿀팁:</b><br>
-                            - 색상이 진한 보라색일수록 두 구역을 함께 방문한 사람이 많다는 뜻입니다.<br>
-                            - <b>활용 예시:</b> 비 오는 날짜를 선택해 보세요! [라면]과 만나는 네모 칸이 짙어진다면, 우천 시엔 파전 대신 라면 묶음 할인을 기획해 볼 수 있습니다!
-                        </div>
-                        """, unsafe_allow_html=True)
+                        # ✅ [UX 개선] 히트맵 해석 가이드를 접기/펴기 메뉴로 깔끔하게 숨겼습니다!
+                        with st.expander("💡 히트맵 해석 및 활용 꿀팁 (클릭하여 펼치기)"):
+                            st.markdown("""
+                            - **색상의 의미:** 색상이 진한 보라색일수록 두 구역을 함께 방문한 고객이 많다는 뜻입니다.
+                            - **인사이트 도출:** 비 오는 날짜를 선택했을 때 특정 상품군(예: 라면-주류)의 색상이 짙어진다면, 해당 조합의 묶음 할인을 기획하거나 매대를 가깝게 배치하여 크로스셀링(Cross-selling)을 유도할 수 있습니다.
+                            - **대각선 빈칸:** 같은 구역(예: 라면-라면)이 만나는 곳은 데이터 방해를 막기 위해 의도적으로 제외(0) 처리되었습니다.
+                            """)
                     else:
                         st.info("해당 날짜에 겹치는 방문 데이터가 없습니다.")
 
