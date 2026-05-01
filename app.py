@@ -271,21 +271,33 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # 찐 체류시간 4사분면 차트 (Magic Quadrant)
+                # ⭐ 찐 체류시간 4사분면 차트 (30초 미만 체류 제외 패치 적용)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
-                with st.spinner("Calculating Dwell Times..."):
+                with st.spinner("Calculating True Dwell Times..."):
+                    
+                    MIN_STAY_SEC = 30 # 30초 미만으로 스쳐간 사람 제외
+                    
                     if 'stay_sec' in filtered_df.columns:
-                        zone_stats = filtered_df.groupby('zone').agg(
-                            Visitors=('real_user_id', 'nunique'),
+                        total_visitors = filtered_df.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
+                        true_dwellers = filtered_df[filtered_df['stay_sec'] >= MIN_STAY_SEC]
+                        true_dwell_time = true_dwellers.groupby('zone').agg(
                             Avg_Dwell_Time=('stay_sec', lambda x: x.mean() / 60.0) 
                         ).reset_index()
+                        
+                        zone_stats = pd.merge(total_visitors, true_dwell_time, on='zone', how='left')
+                        zone_stats['Avg_Dwell_Time'] = zone_stats['Avg_Dwell_Time'].fillna(0)
                     else:
                         zone_user_stats = filtered_df.groupby(['zone', 'real_user_id']).size().reset_index(name='log_count')
                         zone_user_stats['dwell_time_min'] = (zone_user_stats['log_count'] * 10) / 60.0 
-                        zone_stats = zone_user_stats.groupby('zone').agg(
-                            Visitors=('real_user_id', 'nunique'),
+                        
+                        total_visitors = zone_user_stats.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
+                        true_dwellers = zone_user_stats[zone_user_stats['dwell_time_min'] >= (MIN_STAY_SEC / 60.0)]
+                        true_dwell_time = true_dwellers.groupby('zone').agg(
                             Avg_Dwell_Time=('dwell_time_min', 'mean')
                         ).reset_index()
+                        
+                        zone_stats = pd.merge(total_visitors, true_dwell_time, on='zone', how='left')
+                        zone_stats['Avg_Dwell_Time'] = zone_stats['Avg_Dwell_Time'].fillna(0)
 
                     if not zone_stats.empty:
                         avg_vis = zone_stats['Visitors'].mean()
@@ -293,8 +305,8 @@ if menu == "Traffic Summary":
                         
                         scatter = alt.Chart(zone_stats).mark_circle(size=250, opacity=0.8, color='#8B5CF6').encode(
                             x=alt.X('Visitors:Q', title='Unique Visitors (인기도)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            y=alt.Y('Avg_Dwell_Time:Q', title='Average Dwell Time [Min] (체류시간)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            tooltip=['zone', 'Visitors', alt.Tooltip('Avg_Dwell_Time:Q', format='.1f', title='Dwell Time (Min)')]
+                            y=alt.Y('Avg_Dwell_Time:Q', title='True Dwell Time [Min] (찐 체류시간)', scale=alt.Scale(zero=False), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            tooltip=['zone', 'Visitors', alt.Tooltip('Avg_Dwell_Time:Q', format='.1f', title='True Dwell Time (Min)')]
                         )
                         
                         text = scatter.mark_text(
@@ -307,17 +319,17 @@ if menu == "Traffic Summary":
                         quadrant_chart = (scatter + text + hline + vline).properties(height=450)
                         st.altair_chart(quadrant_chart, use_container_width=True)
                         
-                        # ⭐ [수정됨] 제목을 군더더기 없이 '💡 Tip'으로 변경했습니다!
                         with st.expander("💡 Tip"):
                             st.markdown("""
                             **십자선(빨간 점선)은 전체 평균을 의미합니다.**
+                            - **산출 기준:** 단순 통과객으로 인한 데이터 왜곡을 막기 위해, **해당 구역에 30초 이상 머문 고객의 데이터만 추출하여 '진짜 체류시간(True Dwell Time)'을 산출**했습니다.
                             - **우상단 (Golden Zone):** 방문객도 많고 오래 머무는 핵심 매출 구역
                             - **우하단 (통로 구역):** 스쳐 지나가는 통로 (충동구매 상품 배치 권장)
                             - **좌상단 (목적 구매 구역):** 소수 마니아가 꼼꼼히 고르는 구역
                             - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
                             """)
                 
-                # 고객 동선 맵 (완벽한 다크 모드 캔버스)
+                # 고객 동선 맵
                 st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
                 with st.spinner("Rendering flow map..."):
                     flow_df = filtered_df.copy()
@@ -360,7 +372,7 @@ if menu == "Traffic Summary":
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
-                # Single Date 탭 안으로 들어온 완벽한 장바구니 연관성 분석!
+                # 장바구니 연관성 분석
                 st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
                 with st.spinner("Calculating Cross-Visitation..."):
                     unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
@@ -387,7 +399,6 @@ if menu == "Traffic Summary":
                         
                         st.altair_chart(heatmap, use_container_width=True)
                         
-                        # ⭐ [수정됨] 제목을 군더더기 없이 '💡 Tip'으로 변경했습니다!
                         with st.expander("💡 Tip"):
                             st.markdown("""
                             - **색상의 의미:** 색상이 진한 보라색일수록 두 구역을 함께 방문한 고객이 많다는 뜻입니다.
@@ -399,7 +410,7 @@ if menu == "Traffic Summary":
 
             else: st.info("No data available for the selected parameters.")
 
-        # 다중 날짜 비교 (Crosshair 탑재)
+        # 다중 날짜 비교
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
