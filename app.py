@@ -185,7 +185,7 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
-                # ⭐ 1. OS 비율 전광판
+                # OS 비율 전광판
                 if df_os is not None:
                     if selected_date == "All Dates (Cumulative)":
                         android_count = df_os[df_os['os'] == 'Android']['count'].sum()
@@ -214,7 +214,7 @@ if menu == "Traffic Summary":
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # ⭐ 2. 수직선 탑재 고급 트렌드 차트
+                # 수직선 탑재 고급 트렌드 차트
                 st.markdown("<br>#### Time-Series Traffic (Advanced Trend Analysis)", unsafe_allow_html=True)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
@@ -268,7 +268,7 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # ⭐ 3. 드디어! 찐 체류시간 4사분면 차트 (Magic Quadrant)
+                # 찐 체류시간 4사분면 차트 (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating Dwell Times..."):
                     if 'stay_sec' in filtered_df.columns:
@@ -294,6 +294,7 @@ if menu == "Traffic Summary":
                             tooltip=['zone', 'Visitors', alt.Tooltip('Avg_Dwell_Time:Q', format='.1f', title='Dwell Time (Min)')]
                         )
                         
+                        # 텍스트 가독성을 위해 흰색으로 셋팅
                         text = scatter.mark_text(
                             align='left', baseline='middle', dx=12, color='#F8FAFC', fontSize=12, fontWeight=600
                         ).encode(text='zone')
@@ -317,7 +318,7 @@ if menu == "Traffic Summary":
                         
                         st.altair_chart(quadrant_chart, use_container_width=True)
                 
-                # ⭐ 4. 고객 동선 맵
+                # 고객 동선 맵 (완벽한 다크 모드 캔버스)
                 st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
                 with st.spinner("Rendering flow map..."):
                     flow_df = filtered_df.copy()
@@ -339,12 +340,12 @@ if menu == "Traffic Summary":
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
-                            fig_flow.patch.set_facecolor('white')
-                            ax_flow.set_facecolor('white')
+                            fig_flow.patch.set_facecolor('#0F172A') # 배경 다크네이비
+                            ax_flow.set_facecolor('#0F172A') # 배경 다크네이비
                             img_path = 'map_image.jpg'
                             try:
                                 img = mpimg.imread(img_path)
-                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.5)
+                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.35) # 밝기를 살짝 줄여서 다크모드에 맞게
                             except: ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
                             
                             max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
@@ -353,13 +354,16 @@ if menu == "Traffic Summary":
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
                             edge_widths = [(G[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G.edges()]
                             
-                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
+                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.85)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
-                            nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
+                            
+                            # 텍스트 가독성을 위해 흰색 글씨 + 다크 둥근배경
+                            nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.9, edgecolor='#334155', boxstyle='round,pad=0.3'))
                             ax_flow.axis('off')
-                            st.pyplot(fig_flow, facecolor='white')
+                            st.pyplot(fig_flow, facecolor='#0F172A')
             else: st.info("No data available for the selected parameters.")
 
+        # ⭐ [수정됨] 다중 날짜 비교 탭 (날짜별 스무딩 적용 완료!)
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -384,17 +388,21 @@ if menu == "Traffic Summary":
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data_multi['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data_multi['time_str'])
                         
+                        # 날짜별로 그룹을 묶어서 트렌드(평균 곡선)를 각각 계산합니다
+                        plot_data_multi['Trend'] = plot_data_multi.groupby('date')['visitors'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
+                        
                         highlight = alt.selection_point(fields=['Label'], bind='legend')
                         
+                        # y축을 Trend(평균치)로 세팅해서 매끄러운 곡선 비교
                         chart_multi = alt.Chart(plot_data_multi).mark_line(
                             interpolate='monotone', 
-                            strokeWidth=3
+                            strokeWidth=3.5
                         ).encode(
                             x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
-                            y=alt.Y('visitors:Q', title='Visitors', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            y=alt.Y('Trend:Q', title='Trend (Avg Visitors)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
                             color=alt.Color('Label:N', title='Legend (Click to Isolate)', scale=alt.Scale(scheme='set2')),
                             opacity=alt.condition(highlight, alt.value(1.0), alt.value(0.1)),
-                            tooltip=['Label:N', alt.Tooltip('Time:T', format='%H:%M'), 'visitors:Q']
+                            tooltip=['Label:N', alt.Tooltip('Time:T', format='%H:%M'), alt.Tooltip('visitors:Q', title='Raw Visitors'), alt.Tooltip('Trend:Q', format='.1f', title='Trend')]
                         ).add_params(highlight)
                         
                         st.altair_chart(chart_multi.properties(height=400), use_container_width=True)
@@ -419,8 +427,10 @@ if menu == "Traffic Summary":
                                         <p style="color: #F43F5E; font-size: 12px; margin-top: 5px;">Peak: {peak_time} ({peak_val:.0f})</p>
                                     </div>
                                     """, unsafe_allow_html=True)
-                except: pass
+                except Exception as e: 
+                    st.error(f"Multi-Date Chart Error: {e}")
 
+# Heatmap Analysis 다크 모드 캔버스
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
     if df_all is not None and 'date' in df_all.columns:
@@ -441,10 +451,10 @@ elif menu == "Heatmap Analysis":
                 red_sens = st.slider("Sensitivity", 1, 50, 15, step=1)
             with col2:
                 fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
-                fig.patch.set_facecolor('white')
-                ax.set_facecolor('white')
+                fig.patch.set_facecolor('#0F172A')
+                ax.set_facecolor('#0F172A')
                 
-                if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.5)
+                if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.35)
                 else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
                 
                 df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
@@ -458,7 +468,7 @@ elif menu == "Heatmap Analysis":
                     max_val = np.max(heatmap_smoothed)
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
-                    st.pyplot(fig, facecolor='white')
+                    st.pyplot(fig, facecolor='#0F172A')
 
 elif menu == "Demand Forecast":
     st.title("Demand Forecast")
@@ -525,6 +535,7 @@ elif menu == "Demand Forecast":
 
             except: st.error("Model 'ai_forecaster.pkl' not found.")
 
+# Layout Simulator 다크 모드 캔버스
 elif menu == "Layout Simulator":
     st.title("Layout Simulator")
 
@@ -626,9 +637,9 @@ elif menu == "Layout Simulator":
                     for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                     
                     fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150)
-                    fig_sim.patch.set_facecolor('white')
-                    ax_sim.set_facecolor('white')
-                    if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.5)
+                    fig_sim.patch.set_facecolor('#0F172A')
+                    ax_sim.set_facecolor('#0F172A')
+                    if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
                     else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
                     
                     max_pop = max(list(sim_zone_pop.values())) if sim_zone_pop.values() else 1
@@ -645,12 +656,12 @@ elif menu == "Layout Simulator":
                     max_weight = max([G_sim[u][v]['weight'] for u, v in G_sim.edges()]) if G_sim.edges() else 1
                     edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
                     
-                    nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2)
+                    nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2)
                     nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
-                    nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
+                    nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.9, edgecolor='#334155', boxstyle='round,pad=0.3'))
                     
                     ax_sim.axis('off')
-                    st.pyplot(fig_sim, facecolor='white')
+                    st.pyplot(fig_sim, facecolor='#0F172A')
 
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
@@ -681,17 +692,18 @@ elif menu == "LLM Assistant":
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             except KeyError: st.error("API Key not found in st.secrets.")
 
+# Sensor Map 다크 모드 캔버스
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
     try:
         sward_df = pd.read_csv('swards (1).csv')
         fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
-        fig.patch.set_facecolor('white')
-        ax.set_facecolor('white')
-        if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.5)
+        fig.patch.set_facecolor('#0F172A')
+        ax.set_facecolor('#0F172A')
+        if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.35)
         else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-        ax.scatter(sward_df['x'], sward_df['y'], color='#F43F5E', s=55, edgecolors='black', linewidth=1, zorder=2)
-        for _, row in sward_df.iterrows(): ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8, color='black', fontweight='bold')
+        ax.scatter(sward_df['x'], sward_df['y'], color='#F43F5E', s=55, edgecolors='#F8FAFC', linewidth=1, zorder=2)
+        for _, row in sward_df.iterrows(): ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8, color='#F8FAFC', fontweight='bold', bbox=dict(facecolor='#1E293B', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
         ax.axis('off')
-        st.pyplot(fig, facecolor='white')
+        st.pyplot(fig, facecolor='#0F172A')
     except: st.error("Sensor configuration file not found.")
