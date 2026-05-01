@@ -169,12 +169,10 @@ if menu == "📊 트래픽 요약":
     
     if df_all is not None and 'date' in df_all.columns:
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
-        
-        # ⭐ [핵심 추가] 탭(Tab) 기능으로 단일 조회와 다중 비교를 완벽 분리!
         tab1, tab2 = st.tabs(["📅 단일 날짜 상세 리포트", "📈 여러 날짜 흐름 비교"])
         
         # ==========================================
-        # 탭 1: 기존 단일 날짜 (혹은 전체 누적) 데이터 보기
+        # 탭 1: 기존 단일 날짜 상세 리포트
         # ==========================================
         with tab1:
             st.markdown("### 🔍 특정 날짜 상세 분석")
@@ -246,7 +244,6 @@ if menu == "📊 트래픽 요약":
                             for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
-                            # ☀️ 배경을 강제로 하얗게 만듭니다
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
                             img_path = 'map_image.jpg'
                             try:
@@ -268,13 +265,12 @@ if menu == "📊 트래픽 요약":
             else: st.info("데이터가 없습니다.")
 
         # ==========================================
-        # ⭐ 탭 2: 다중 날짜 흐름 비교 (새로 추가된 기능!)
+        # ⭐ 탭 2: 다중 날짜 흐름 비교 (스파게티 해결!)
         # ==========================================
         with tab2:
             st.markdown("### 📈 여러 날짜 트래픽 흐름 비교 (다중 선택)")
-            st.markdown("비교하고 싶은 날짜들을 체크박스로 여러 개 선택하여 파도(트래픽 흐름)의 차이를 직관적으로 확인해 보세요!")
+            st.markdown("마우스를 그래프 위에 올리면 **원하는 날짜의 선만 진하게 하이라이트** 됩니다! (선이 많아져도 구분이 쉽습니다)")
             
-            # 다중 선택창 (multiselect) - 기본으로 맨 앞의 2개 날짜를 선택해 둡니다.
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
                 "📅 비교할 날짜들을 모두 선택하세요:", 
@@ -287,7 +283,6 @@ if menu == "📊 트래픽 요약":
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     
-                    # 선택된 여러 날짜의 데이터만 필터링하는 로직
                     def is_in_multi(val, targets):
                         for t in targets:
                             if safe_date_match(val, t): return True
@@ -296,24 +291,64 @@ if menu == "📊 트래픽 요약":
                     plot_data_multi = trend_df[trend_df['date'].apply(lambda x: is_in_multi(x, selected_multi_dates))].copy()
                     
                     if not plot_data_multi.empty:
-                        # 날짜를 예쁘게 (날씨 포함) 표시하기 위해 매핑
                         plot_data_multi['날짜_라벨'] = plot_data_multi['date'].apply(lambda x: format_date_option(x))
-                        
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data_multi['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data_multi['time_str'])
                         
-                        # 알타이어(Altair) 다중 라인 차트 그리기 (색상을 '날짜_라벨' 기준으로 다르게 지정)
-                        chart_multi = alt.Chart(plot_data_multi).mark_line(interpolate='monotone', strokeWidth=3).encode(
+                        # ---------------------------------------------------------
+                        # ⭐ 1. 스파게티 해결: 인터랙티브 하이라이트 (Hover 기능) 설정
+                        # ---------------------------------------------------------
+                        highlight = alt.selection_point(on='pointerover', fields=['날짜_라벨'], nearest=True)
+                        
+                        # ⭐ 2. 스파게티 해결: 선을 뾰족하지 않게 (interpolate='monotone') 부드럽게 처리
+                        chart_multi = alt.Chart(plot_data_multi).mark_line(
+                            interpolate='monotone', 
+                            strokeWidth=4 # 선 굵기 증가
+                        ).encode(
                             x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
                             y=alt.Y('visitors:Q', title='동시 체류 방문객 수 (명)', axis=alt.Axis(labelColor='#475569')),
-                            color=alt.Color('날짜_라벨:N', title='비교 날짜 (색상)', scale=alt.Scale(scheme='category10')),
+                            color=alt.Color('날짜_라벨:N', title='비교 날짜', scale=alt.Scale(scheme='category10')),
+                            # 마우스 오버 시 선택된 선은 투명도 1.0, 나머지는 0.2로 흐려짐
+                            opacity=alt.condition(highlight, alt.value(1.0), alt.value(0.2)),
                             tooltip=[
                                 alt.Tooltip('날짜_라벨:N', title='해당 날짜'), 
                                 alt.Tooltip('시간:T', format='%H:%M', title='시간대'), 
                                 alt.Tooltip('visitors:Q', title='방문객 수')
                             ]
+                        ).add_params(
+                            highlight
                         )
+                        
                         st.altair_chart(chart_multi.properties(height=450).interactive(), use_container_width=True)
+                        
+                        # ---------------------------------------------------------
+                        # ⭐ 3. 스파게티 해결: 선택한 날짜별 [핵심 요약 카드] 나란히 배치
+                        # ---------------------------------------------------------
+                        st.markdown("#### 📊 선택한 날짜 핵심 데이터 요약")
+                        # 화면을 선택한 날짜 개수만큼의 칸(column)으로 나눔
+                        cols = st.columns(len(selected_multi_dates))
+                        
+                        for i, date_str in enumerate(selected_multi_dates):
+                            # 해당 날짜 데이터만 필터링
+                            df_single = plot_data_multi[plot_data_multi['date'].apply(lambda x: safe_date_match(x, date_str))]
+                            if not df_single.empty:
+                                total_vis = df_single['visitors'].sum()
+                                # 가장 방문객이 많았던 시간(피크 타임) 찾기
+                                peak_row = df_single.loc[df_single['visitors'].idxmax()]
+                                peak_time = peak_row['time_str']
+                                peak_val = peak_row['visitors']
+                                
+                                nice_label = format_date_option(date_str).split('[')[0].strip() # 날짜만 깔끔하게
+                                
+                                # 각 컬럼에 요약 카드(Metric) 표시
+                                with cols[i]:
+                                    st.markdown(f"""
+                                    <div style="background-color: #FFFFFF; padding: 15px; border-radius: 10px; border-top: 5px solid #3B82F6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center;">
+                                        <p style="color: #64748B; font-size: 14px; margin-bottom: 5px; font-weight: bold;">{nice_label}</p>
+                                        <h3 style="color: #0F172A; margin: 0; font-size: 24px;">{total_vis:,.0f} <span style="font-size:14px; color:#94A3B8;">명 (총합)</span></h3>
+                                        <p style="color: #EF4444; font-size: 13px; margin-top: 10px; font-weight: bold;">🔥 피크 타임: {peak_time} ({peak_val:.0f}명)</p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                     else:
                         st.info("💡 선택하신 날짜들에 해당하는 트래픽 데이터가 없습니다.")
                 except Exception as e:
