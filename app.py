@@ -652,11 +652,13 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='white')
 
-elif menu == "LLM Assistant":
-    st.title("LLM Operations Advisor")
-    if not HAS_GENAI: st.error("google-generativeai module not found.")
+elif menu == "💬 Gemini 매장 비서 (챗봇)":
+    st.title("💬 Gemini 매장 운영 비서")
+    
+    if not HAS_GENAI: 
+        st.error("google-generativeai 라이브러리가 없습니다.")
     else:
-        with st.container():
+        with st.container(border=True):
             try:
                 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                 best_model = 'gemini-1.5-flash'
@@ -667,19 +669,48 @@ elif menu == "LLM Assistant":
                             elif 'pro' in m.name: best_model = m.name
                 except: pass
                 model = genai.GenerativeModel(best_model)
+                st.success(f"✅ 구글 서버 자동 연결 성공! (작동 모델: `{best_model}`)")
                 
+                # ⭐ [핵심 추가] 프롬프트에 주입할 현재 매장 전체 트래픽/체류시간 요약 생성
+                store_context = "현재 매장 트래픽 데이터가 없습니다."
+                if df_all is not None and not df_all.empty:
+                    # 피드백 반영: 전체 트래픽 및 평균 체류시간 위주로 데이터 압축
+                    total_users = df_all['real_user_id'].nunique()
+                    top_3_zones = df_all['zone'].value_counts().head(3).index.tolist()
+                    avg_stay_min = df_all['stay_sec'].mean() / 60 if 'stay_sec' in df_all.columns else 0
+                    
+                    store_context = f"""
+                    [백그라운드 정보: 현재 마트 데이터 요약]
+                    - 총 누적 방문 고객: {total_users:,}명
+                    - 가장 붐비는 코너 Top 3: {', '.join(top_3_zones)}
+                    - 고객 평균 체류 시간: 약 {avg_stay_min:.1f}분
+                    """
+
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
                 for msg in st.session_state.chat_history:
                     with st.chat_message(msg["role"]): st.markdown(msg["content"])
-                if prompt := st.chat_input("Ask advisor..."):
+                    
+                if prompt := st.chat_input("질문을 입력하세요... (예: 현재 가장 붐비는 코너를 바탕으로 마케팅 전략 세워줘)"):
                     st.session_state.chat_history.append({"role": "user", "content": prompt})
                     with st.chat_message("user"): st.markdown(prompt)
+                    
                     with st.chat_message("assistant"):
-                        with st.spinner("Processing..."):
-                            response = model.generate_content(prompt)
+                        with st.spinner("데이터 분석 및 답변 생성 중..."):
+                            # ⭐ [핵심 수정] 사용자 질문 앞에 백그라운드 데이터를 몰래 끼워넣음
+                            final_prompt = f"""
+                            너는 대형 마트의 유능한 점장 비서이자 데이터 분석가야. 
+                            다음 백그라운드 데이터를 기반으로 질문에 실무적이고 인사이트 있는 답변을 해줘.
+                            
+                            {store_context}
+                            
+                            점장님의 질문: {prompt}
+                            """
+                            
+                            response = model.generate_content(final_prompt)
                             st.markdown(response.text)
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            except KeyError: st.error("API Key not found in st.secrets.")
+            except KeyError: 
+                st.error("비밀 금고에 API 키가 없습니다!")
 
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
