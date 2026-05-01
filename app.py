@@ -42,6 +42,7 @@ else:
         plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
+# ⭐ 드롭다운 메뉴(팝오버) 다크모드 CSS 완벽 패치 적용
 custom_css = """
 <style>
     /* 전체 배경 및 텍스트 */
@@ -71,6 +72,29 @@ custom_css = """
     .stTabs [data-baseweb="tab-list"] { gap: 20px; }
     .stTabs [data-baseweb="tab"] { font-size: 16px; font-weight: 600; color: #64748B; padding: 10px 20px; }
     .stTabs [aria-selected="true"] { color: #38BDF8; border-bottom-color: #38BDF8; }
+    
+    /* ⭐ 셀렉트박스 드롭다운 메뉴 완벽 다크모드 적용 */
+    div[data-baseweb="popover"] > div,
+    ul[data-baseweb="menu"] {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+    }
+    li[role="option"] {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+    }
+    li[role="option"]:hover, li[aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #38BDF8 !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: #0F172A !important;
+        border-color: #334155 !important;
+        color: #F8FAFC !important;
+    }
+    div[data-baseweb="select"] span {
+        color: #F8FAFC !important;
+    }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -317,9 +341,6 @@ if menu == "Traffic Summary":
                                     """, unsafe_allow_html=True)
                 except: pass
 
-# ====================================================================
-# ⭐ [수정됨] 히트맵 부분: 배경을 순백색(White)으로 돌리고, 구름은 원본 붉은색(Reds)으로 복구
-# ====================================================================
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
     if df_all is not None and 'date' in df_all.columns:
@@ -339,11 +360,9 @@ elif menu == "Heatmap Analysis":
                 blur_sigma = st.slider("Diffusion (Sigma)", 1.0, 10.0, 4.0, step=0.5)
                 red_sens = st.slider("Sensitivity", 1, 50, 15, step=1)
             with col2:
-                # ⭐ 변경 포인트: 도화지 배경을 white로 설정
                 fig, ax = plt.subplots(figsize=(10, 7), dpi=100, facecolor='white')
                 ax.set_facecolor('white')
                 
-                # ⭐ 변경 포인트: 도면의 밝기(alpha)를 원래대로 맑게 복구
                 if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.5)
                 else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
                 
@@ -356,7 +375,6 @@ elif menu == "Heatmap Analysis":
                     heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
                     heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
                     max_val = np.max(heatmap_smoothed)
-                    # ⭐ 변경 포인트: 구름 색상을 깨끗한 원본 Reds로 복구
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
                     st.pyplot(fig)
