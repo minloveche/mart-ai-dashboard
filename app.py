@@ -153,7 +153,8 @@ def format_date_option(d):
     except: return str(d)
 
 st.sidebar.title("Spatial Analytics")
-main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "AI Operations", "Sensor Map"])
+# ⭐ [NEW] 메뉴에 'Cross-Visitation' 추가 완료!
+main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "Cross-Visitation", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
@@ -295,7 +296,7 @@ if menu == "Traffic Summary":
                         )
                         
                         text = scatter.mark_text(
-                            align='left', baseline='middle', dx=12, color='#F8FAFC', fontSize=12, fontWeight=400
+                            align='left', baseline='middle', dx=12, color='#F8FAFC', fontSize=12, fontWeight=600
                         ).encode(text='zone')
                         
                         hline = alt.Chart(pd.DataFrame({'y': [avg_dwell]})).mark_rule(color='#F43F5E', strokeDash=[4,4], strokeWidth=1.5).encode(y='y:Q')
@@ -339,8 +340,8 @@ if menu == "Traffic Summary":
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
-                            fig_flow.patch.set_facecolor('#0F172A') # 배경 다크네이비
-                            ax_flow.set_facecolor('#0F172A') # 배경 다크네이비
+                            fig_flow.patch.set_facecolor('#0F172A')
+                            ax_flow.set_facecolor('#0F172A')
                             img_path = 'map_image.jpg'
                             try:
                                 img = mpimg.imread(img_path)
@@ -361,7 +362,7 @@ if menu == "Traffic Summary":
                             st.pyplot(fig_flow, facecolor='#0F172A')
             else: st.info("No data available for the selected parameters.")
 
-        # ⭐ [끝판왕 패치] 다중 날짜 비교 - 마우스 호버 자동 수직선 & 수치 표시
+        # 다중 날짜 비교 - 마우스 호버 자동 수직선 & 수치 표시 (Crosshair)
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -386,14 +387,10 @@ if menu == "Traffic Summary":
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data_multi['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data_multi['time_str'])
                         
-                        # 날짜별 트렌드 스무딩
                         plot_data_multi['Trend'] = plot_data_multi.groupby('date')['visitors'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
                         
-                        # --- [마법의 인터랙티브 교차선(Crosshair) 로직 시작] ---
-                        # 1. 마우스의 X축(시간) 위치를 부드럽게 추적하는 호버 감지기
                         hover = alt.selection_point(fields=['Time'], nearest=True, on='mouseover', empty=False)
 
-                        # 2. 기본 선 차트 뼈대 (Y축은 부드러운 Trend)
                         base = alt.Chart(plot_data_multi).encode(
                             x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                             y=alt.Y('Trend:Q', title='Trend (Avg Visitors)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
@@ -401,32 +398,25 @@ if menu == "Traffic Summary":
                         )
                         line = base.mark_line(interpolate='monotone', strokeWidth=3.5)
 
-                        # 3. 투명한 기둥을 깔아 마우스 움직임을 포착
                         selectors = alt.Chart(plot_data_multi).mark_point().encode(
                             x='Time:T', opacity=alt.value(0)
                         ).add_params(hover)
 
-                        # 4. 마우스가 있는 시간에 맞춰 선 위에 나타날 동그라미(포인트)
                         points = base.mark_circle(size=80).encode(
                             opacity=alt.condition(hover, alt.value(1), alt.value(0)),
                             tooltip=[alt.Tooltip('Time:T', format='%H:%M'), 'Label:N', alt.Tooltip('visitors:Q', title='Raw Visitors'), alt.Tooltip('Trend:Q', format='.1f', title='Trend')]
                         )
 
-                        # 5. 마우스를 따라다니는 하얀색 수직 점선 (Crosshair)
                         rule = alt.Chart(plot_data_multi).mark_rule(color='#F8FAFC', strokeWidth=1.5, strokeDash=[4, 4]).encode(
                             x='Time:T'
                         ).transform_filter(hover)
                         
-                        # 6. 각 선 옆에 숫자를 바로 띄워주는 텍스트 레이어! (툴팁 볼 필요 없음)
                         text = base.mark_text(align='left', dx=8, dy=-8, fontSize=14, fontWeight='bold').encode(
                             text=alt.condition(hover, alt.Text('Trend:Q', format='.0f'), alt.value(' ')),
-                            color=alt.Color('Label:N', scale=alt.Scale(scheme='set2')) # 선 색깔과 글자 색깔 통일
+                            color=alt.Color('Label:N', scale=alt.Scale(scheme='set2'))
                         )
 
-                        # 7. 모든 레이어 합치기
                         chart_multi = (line + selectors + rule + points + text).properties(height=400)
-                        # -----------------------------------------------------
-
                         st.altair_chart(chart_multi, use_container_width=True)
                         
                         st.markdown("#### Performance Summary")
@@ -452,6 +442,7 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
+# Heatmap Analysis 다크 모드 캔버스
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
     if df_all is not None and 'date' in df_all.columns:
@@ -490,6 +481,60 @@ elif menu == "Heatmap Analysis":
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
+
+# ⭐ [NEW] 날짜 필터링이 탑재된 실시간 장바구니 연관성 분석 탭
+elif menu == "Cross-Visitation":
+    st.title("Basket & Cross-Visitation Analysis")
+    st.markdown("특정 날짜를 선택하여 고객들이 **어떤 구역을 함께 방문했는지(연관성)**를 분석합니다.")
+    
+    if df_all is not None and 'date' in df_all.columns:
+        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
+        selected_date = st.selectbox("Select Date:", ["All Dates (Cumulative)"] + available_dates, format_func=format_date_option)
+
+        with st.spinner(f"Calculating Cross-Visitation for {format_date_option(selected_date)}..."):
+            if selected_date == "All Dates (Cumulative)":
+                cv_base_df = df_all
+            else:
+                cv_base_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
+
+            if not cv_base_df.empty:
+                unique_visits = cv_base_df.drop_duplicates(subset=['real_user_id', 'zone'])
+                user_zone_matrix = pd.crosstab(unique_visits['real_user_id'], unique_visits['zone'])
+                co_matrix = user_zone_matrix.T.dot(user_zone_matrix)
+                np.fill_diagonal(co_matrix.values, 0)
+
+                df_melted = co_matrix.reset_index().melt(id_vars='zone', var_name='Target Zone', value_name='Co-Visitors')
+                df_melted = df_melted[df_melted['Co-Visitors'] > 0]
+
+                if not df_melted.empty:
+                    heatmap = alt.Chart(df_melted).mark_rect(rx=3, ry=3).encode(
+                        x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155')),
+                        y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        color=alt.Color('Co-Visitors:Q', scale=alt.Scale(scheme='purples'), legend=alt.Legend(title="동시 방문자 수")),
+                        tooltip=[
+                            alt.Tooltip('zone:N', title='기준 구역'), 
+                            alt.Tooltip('Target Zone:N', title='동시 방문 구역'), 
+                            alt.Tooltip('Co-Visitors:Q', title='겹친 방문객 수', format=',.0f')
+                        ]
+                    ).properties(height=600)
+                    
+                    nice_title_date = format_date_option(selected_date)
+                    st.markdown(f"<br>#### Cross-Visitation Matrix ({nice_title_date})", unsafe_allow_html=True)
+                    st.altair_chart(heatmap, use_container_width=True)
+                    
+                    st.markdown("""
+                    <div style="background-color: #1E293B; padding: 15px; border-radius: 8px; border-left: 3px solid #8B5CF6;">
+                        💡 <b>히트맵 해석 꿀팁:</b><br>
+                        - 색상이 진한 보라색일수록 두 구역을 함께 방문한 사람이 많다는 뜻입니다.<br>
+                        - <b>활용 예시:</b> 비 오는 날짜를 선택해 보세요! [라면]과 만나는 네모 칸이 짙어진다면, 우천 시엔 파전 대신 라면 묶음 할인을 기획해 볼 수 있습니다!
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("선택한 날짜에 겹치는 방문 데이터가 없습니다.")
+            else:
+                st.info("해당 날짜의 트래픽 데이터가 없습니다.")
+    else:
+        st.error("데이터를 불러올 수 없습니다. 트래픽 요약 탭에서 데이터가 정상인지 확인해 주세요.")
 
 elif menu == "Demand Forecast":
     st.title("Demand Forecast")
