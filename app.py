@@ -23,8 +23,7 @@ except ImportError:
     HAS_GENAI = False
 
 # --- [1. 기본 설정 및 한글 폰트] ---
-# layout="wide" 유지, 탭 제목 설정
-st.set_page_config(page_title="Retail AI Analytics", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Retail AI Dashboard", page_icon="🛒", layout="wide")
 
 if platform.system() == 'Windows':
     plt.rc('font', family='Malgun Gothic')
@@ -40,72 +39,22 @@ else:
         plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# ⭐ [디자인 핵심] 엔터프라이즈 B2B 대시보드 CSS
 custom_css = """
 <style>
-    /* 1. 기본 스트림릿 브랜딩 완벽 제거 (독립적인 앱처럼 보이게) */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-
-    /* 2. 전체 배경 (소프트 라이트 그레이) */
-    .stApp { background-color: #F4F6F9; }
+    .stApp { background-color: #F8FAFC; }
+    [data-testid="stSidebar"] { background-color: #1E293B !important; }
+    [data-testid="stSidebar"] * { color: #F1F5F9 !important; }
+    h1, h2, h3 { color: #0F172A; font-weight: 800 !important; letter-spacing: -0.5px; }
+    [data-testid="stMetric"] { background-color: #FFFFFF; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #E2E8F0; text-align: center; transition: transform 0.2s; }
+    [data-testid="stMetric"]:hover { transform: translateY(-5px); }
+    [data-testid="stMetricLabel"] { font-size: 15px; color: #64748B; font-weight: 600; }
+    [data-testid="stMetricValue"] { font-size: 36px; color: #2563EB; font-weight: 900; }
+    [data-testid="stVerticalBlockBorderWrapper"] { background-color: #FFFFFF !important; border-radius: 15px !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; border: 1px solid #E2E8F0 !important; padding: 15px !important; }
     
-    /* 3. 사이드바 (프리미엄 다크 네이비 테마) */
-    [data-testid="stSidebar"] {
-        background-color: #0B1120 !important;
-        border-right: none;
-    }
-    [data-testid="stSidebar"] * { color: #E2E8F0 !important; }
-    [data-testid="stSidebar"] .stRadio label { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; }
-    
-    /* 4. 메인 컨텐츠 영역 카드(컨테이너) 디자인 (그림자, 라운딩) */
-    div[data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"], div.stTabs>div[data-baseweb="tab-panel"]>div {
-        background-color: #FFFFFF !important;
-        border-radius: 12px !important;
-        border: 1px solid #E5E7EB !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
-        padding: 1.5rem !important;
-        transition: all 0.3s ease;
-    }
-    [data-testid="stMetric"] { padding: 1.5rem 1rem !important; text-align: center; }
-    [data-testid="stMetric"]:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.1) !important; }
-    
-    /* 5. 텍스트 및 제목 깔끔하게 */
-    h1, h2, h3, h4 { color: #1E293B !important; font-weight: 800 !important; letter-spacing: -0.5px; }
-    
-    /* 6. 전광판 숫자 디자인 (프로페셔널하게) */
-    [data-testid="stMetricLabel"] { font-size: 14px !important; color: #64748B !important; font-weight: 600; letter-spacing: 0.5px; }
-    [data-testid="stMetricValue"] { font-size: 34px !important; color: #0F172A !important; font-weight: 900 !important; }
-    [data-testid="stMetricDelta"] { font-size: 15px !important; font-weight: 700 !important; }
-    
-    /* 7. 탭(Tab) 디자인 고급화 (선택 시 인디고 색상 강조) */
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; border-bottom: 2px solid #E2E8F0; padding-bottom: 0; }
-    .stTabs [data-baseweb="tab"] { 
-        font-size: 16px; font-weight: 700; color: #94A3B8; padding: 12px 24px; 
-        border-radius: 8px 8px 0 0; border: none; background: transparent; 
-    }
-    .stTabs [aria-selected="true"] { 
-        color: #4338CA !important; 
-        border-bottom: 3px solid #4338CA !important; 
-        background-color: #EEF2FF !important; 
-    }
-    
-    /* 8. 버튼 디자인 (그라데이션 입체 버튼) */
-    .stButton>button {
-        background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 10px 24px !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.4) !important;
-        transition: all 0.2s ease;
-    }
-    .stButton>button:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 6px 8px -1px rgba(79, 70, 229, 0.5) !important; }
-    
-    /* 입력창 및 셀렉트박스 깔끔하게 */
-    .stSelectbox label, .stMultiSelect label, .stSlider label { font-weight: 600 !important; color: #475569 !important; }
+    /* 탭 디자인 커스텀 */
+    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
+    .stTabs [data-baseweb="tab"] { font-size: 18px; font-weight: bold; color: #64748B; padding: 10px 20px; }
+    .stTabs [aria-selected="true"] { color: #2563EB; border-bottom-color: #2563EB; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -199,13 +148,12 @@ def format_date_option(d):
     except: return str(d)
 
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3082/3082011.png", width=100)
-st.sidebar.title("Lotte AI Retail")
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
-main_category = st.sidebar.radio("📌 메인 모듈", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
+st.sidebar.title("마트 AI 대시보드")
+main_category = st.sidebar.radio("📌 메인 메뉴", ["📊 트래픽 요약", "🔥 정밀 히트맵", "🤖 AI 어드바이저", "📍 센서(Sward) 위치"])
 
 if main_category == "🤖 AI 어드바이저":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
-    sub_menu = st.sidebar.radio("💡 AI 인텔리전스", ["🌤️ 내일의 AI 예측 브리핑", "🔄 매대 이동 시뮬레이터", "💬 Gemini 매장 비서 (챗봇)"])
+    sub_menu = st.sidebar.radio("💡 상세 기능 선택", ["🌤️ 내일의 AI 예측 브리핑", "🔄 매대 이동 시뮬레이터", "💬 Gemini 매장 비서 (챗봇)"])
     menu = sub_menu 
 else:
     menu = main_category
@@ -213,9 +161,9 @@ else:
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%); padding: 25px; border-radius: 12px; border-left: 6px solid #4F46E5; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <h4 style="color: #312E81; margin-top: 0; font-weight: 800;">🔴 실시간 매장 트래픽 모니터링 시스템</h4>
-        <p style="color: #4F46E5; font-size: 15px; margin-bottom: 0; font-weight: 600;">데이터 기반 동선 분석 및 흐름 추적</p>
+    <div style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 30px; border-radius: 15px; border-left: 5px solid #3B82F6; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <h4 style="color: #1E3A8A; margin-top: 0;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h4>
+        <p style="color: #475569; font-size: 15px; margin-bottom: 0;">🚧 현재 개발 중인 기능입니다.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -223,6 +171,9 @@ if menu == "📊 트래픽 요약":
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
         tab1, tab2 = st.tabs(["📅 단일 날짜 상세 리포트", "📈 여러 날짜 흐름 비교"])
         
+        # ==========================================
+        # 탭 1: 기존 단일 날짜 상세 리포트
+        # ==========================================
         with tab1:
             st.markdown("### 🔍 특정 날짜 상세 분석")
             selected_date = st.selectbox("📅 조회할 날짜를 하나만 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
@@ -252,11 +203,11 @@ if menu == "📊 트래픽 요약":
                     if not plot_data.empty:
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
-                        chart = alt.Chart(plot_data).mark_area(interpolate='monotone', color='#A5B4FC', opacity=0.4).encode(
+                        chart = alt.Chart(plot_data).mark_area(interpolate='monotone', color='#93C5FD', opacity=0.4).encode(
                             x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
                             y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(labelColor='#475569')),
                             tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
-                        ) + alt.Chart(plot_data).mark_line(interpolate='monotone', color='#4F46E5', strokeWidth=3).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
+                        ) + alt.Chart(plot_data).mark_line(interpolate='monotone', color='#3B82F6', strokeWidth=3).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
                         st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
                     else: st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
                 except: st.error("그래프 생성 중 오류가 발생했습니다.")
@@ -267,7 +218,7 @@ if menu == "📊 트래픽 요약":
                 bars = alt.Chart(df_zones).mark_bar(cornerRadiusEnd=5).encode(
                     x=alt.X('방문횟수:Q', title='방문 횟수 (회)'),
                     y=alt.Y('구역:N', sort='-x', title=''),
-                    color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='indigo'), legend=None),
+                    color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
                     tooltip=['구역', '방문횟수']
                 )
                 text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=','))
@@ -313,8 +264,12 @@ if menu == "📊 트래픽 요약":
                             st.pyplot(fig_flow)
             else: st.info("데이터가 없습니다.")
 
+        # ==========================================
+        # ⭐ 탭 2: 다중 날짜 흐름 비교 (범례 클릭 하이라이트 해결 버전!)
+        # ==========================================
         with tab2:
             st.markdown("### 📈 여러 날짜 트래픽 흐름 비교 (다중 선택)")
+            # 설명 문구 변경!
             st.markdown("💡 **Tip:** 우측의 **[범례(날짜)]**를 마우스로 클릭하시면 해당 날짜의 선만 진하게 남고 나머지는 투명해집니다!")
             
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
@@ -341,6 +296,9 @@ if menu == "📊 트래픽 요약":
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data_multi['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data_multi['time_str'])
                         
+                        # ---------------------------------------------------------
+                        # ⭐ 해결: 마우스 오버 대신 '범례(Legend) 클릭'으로 바인딩!
+                        # ---------------------------------------------------------
                         highlight = alt.selection_point(fields=['날짜_라벨'], bind='legend')
                         
                         chart_multi = alt.Chart(plot_data_multi).mark_line(
@@ -350,16 +308,20 @@ if menu == "📊 트래픽 요약":
                             x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
                             y=alt.Y('visitors:Q', title='동시 체류 방문객 수 (명)', axis=alt.Axis(labelColor='#475569')),
                             color=alt.Color('날짜_라벨:N', title='비교 날짜 (클릭해보세요!)', scale=alt.Scale(scheme='category10')),
+                            # 선택 안 된 선의 투명도를 0.1로 더 낮춰서 확 안 보이게 만듦
                             opacity=alt.condition(highlight, alt.value(1.0), alt.value(0.1)),
                             tooltip=[
                                 alt.Tooltip('날짜_라벨:N', title='해당 날짜'), 
                                 alt.Tooltip('시간:T', format='%H:%M', title='시간대'), 
                                 alt.Tooltip('visitors:Q', title='방문객 수')
                             ]
-                        ).add_params(highlight)
+                        ).add_params(
+                            highlight
+                        )
                         
                         st.altair_chart(chart_multi.properties(height=450).interactive(), use_container_width=True)
                         
+                        # 요약 카드 생성 부분
                         st.markdown("#### 📊 선택한 날짜 핵심 데이터 요약")
                         cols = st.columns(len(selected_multi_dates))
                         
@@ -370,14 +332,15 @@ if menu == "📊 트래픽 요약":
                                 peak_row = df_single.loc[df_single['visitors'].idxmax()]
                                 peak_time = peak_row['time_str']
                                 peak_val = peak_row['visitors']
+                                
                                 nice_label = format_date_option(date_str).split('[')[0].strip()
                                 
                                 with cols[i]:
                                     st.markdown(f"""
-                                    <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border-top: 5px solid #4F46E5; text-align: center;">
+                                    <div style="background-color: #FFFFFF; padding: 15px; border-radius: 10px; border-top: 5px solid #3B82F6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center;">
                                         <p style="color: #64748B; font-size: 14px; margin-bottom: 5px; font-weight: bold;">{nice_label}</p>
-                                        <h3 style="color: #0F172A; margin: 0; font-size: 24px;">{total_vis:,.0f} <span style="font-size:14px; color:#94A3B8;">명</span></h3>
-                                        <p style="color: #EF4444; font-size: 13px; margin-top: 10px; font-weight: bold;">🔥 피크: {peak_time} ({peak_val:.0f}명)</p>
+                                        <h3 style="color: #0F172A; margin: 0; font-size: 24px;">{total_vis:,.0f} <span style="font-size:14px; color:#94A3B8;">명 (총합)</span></h3>
+                                        <p style="color: #EF4444; font-size: 13px; margin-top: 10px; font-weight: bold;">🔥 피크 타임: {peak_time} ({peak_val:.0f}명)</p>
                                     </div>
                                     """, unsafe_allow_html=True)
                     else:
@@ -406,23 +369,22 @@ elif menu == "🔥 정밀 히트맵":
                 blur_sigma = st.slider("구름 퍼짐 정도", 1.0, 10.0, 4.0, step=0.5)
                 red_sens = st.slider("붉은색 민감도", 1, 50, 15, step=1)
             with col2:
-                with st.container(border=True):
-                    fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
-                    if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1)
-                    else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-                    df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
-                    if 'time_index' in df_exact.columns and not df_exact.empty:
-                        total_secs = (pd.to_numeric(df_exact['time_index'], errors='coerce').fillna(0) * 10) % 86400
-                        target_sec = selected_time.hour * 3600 + selected_time.minute * 60
-                        df_exact = df_exact[(total_secs >= target_sec) & (total_secs < target_sec + 600)]
-                    if len(df_exact) > 0:
-                        heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
-                        heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
-                        max_val = np.max(heatmap_smoothed)
-                        if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
-                        ax.axis('off')
-                        st.pyplot(fig)
-                    else: st.warning("데이터가 없습니다.")
+                fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
+                if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1)
+                else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
+                df_exact = filtered_traj[(filtered_traj['x'] >= 0) & (filtered_traj['x'] <= 663) & (filtered_traj['y'] >= 0) & (filtered_traj['y'] <= 500)].copy()
+                if 'time_index' in df_exact.columns and not df_exact.empty:
+                    total_secs = (pd.to_numeric(df_exact['time_index'], errors='coerce').fillna(0) * 10) % 86400
+                    target_sec = selected_time.hour * 3600 + selected_time.minute * 60
+                    df_exact = df_exact[(total_secs >= target_sec) & (total_secs < target_sec + 600)]
+                if len(df_exact) > 0:
+                    heatmap_grid, _, _ = np.histogram2d(df_exact['y'], df_exact['x'], bins=[100, 132], range=[[0, 500], [0, 663]])
+                    heatmap_smoothed = gaussian_filter(heatmap_grid, sigma=blur_sigma)
+                    max_val = np.max(heatmap_smoothed)
+                    if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
+                    ax.axis('off')
+                    st.pyplot(fig)
+                else: st.warning("데이터가 없습니다.")
         else: st.info(f"⚠️ {selected_date}의 동선 데이터 파일이 없습니다.")
 
 elif menu == "🌤️ 내일의 AI 예측 브리핑":
@@ -525,141 +487,146 @@ elif menu == "🔄 매대 이동 시뮬레이터":
     """)
 
     if df_all is not None:
-        with st.container(border=True):
-            col1, col2 = st.columns(2)
-            zone_list = list(ZONES.keys())
-            with col1: swap_a = st.selectbox("🔀 A 매대 선택 (이동할 대상)", zone_list, index=zone_list.index('라면') if '라면' in zone_list else 0)
-            with col2: swap_b = st.selectbox("🔀 B 매대 선택 (바뀔 위치)", zone_list, index=zone_list.index('주류') if '주류' in zone_list else 1)
+        col1, col2 = st.columns(2)
+        zone_list = list(ZONES.keys())
+        with col1: swap_a = st.selectbox("🔀 A 매대 선택 (이동할 대상)", zone_list, index=zone_list.index('라면') if '라면' in zone_list else 0)
+        with col2: swap_b = st.selectbox("🔀 B 매대 선택 (바뀔 위치)", zone_list, index=zone_list.index('주류') if '주류' in zone_list else 1)
 
-            if swap_a == swap_b: st.warning("서로 다른 두 매대를 선택해주세요.")
-            else:
-                if st.button("🚀 스와프 시뮬레이션 실행!", use_container_width=True):
-                    with st.spinner(f"[{swap_a}]와 [{swap_b}]의 위치를 바꾸어 마트 전체의 나비효과를 계산합니다..."):
-                        
-                        orig_centers = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) for node in ZONES}
-                        sim_centers = orig_centers.copy()
-                        sim_centers[swap_a], sim_centers[swap_b] = orig_centers[swap_b], orig_centers[swap_a]
+        if swap_a == swap_b: st.warning("서로 다른 두 매대를 선택해주세요.")
+        else:
+            if st.button("🚀 스와프 시뮬레이션 실행!", use_container_width=True):
+                with st.spinner(f"[{swap_a}]와 [{swap_b}]의 위치를 바꾸어 마트 전체의 나비효과를 계산합니다..."):
+                    
+                    orig_centers = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) for node in ZONES}
+                    sim_centers = orig_centers.copy()
+                    sim_centers[swap_a], sim_centers[swap_b] = orig_centers[swap_b], orig_centers[swap_a]
 
-                        flow_df = df_all.copy()
-                        if 'next_zone' not in flow_df.columns:
-                            flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
-                            flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
-                        flow_df = flow_df.dropna(subset=['next_zone'])
-                        flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
-                        
-                        all_flows = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
-                        sim_flows = all_flows.copy()
-                        
-                        zone_popularity = df_all['zone'].value_counts().to_dict()
-                        sim_zone_pop = zone_popularity.copy()
+                    flow_df = df_all.copy()
+                    if 'next_zone' not in flow_df.columns:
+                        flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
+                        flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
+                    flow_df = flow_df.dropna(subset=['next_zone'])
+                    flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
+                    
+                    all_flows = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
+                    sim_flows = all_flows.copy()
+                    
+                    zone_popularity = df_all['zone'].value_counts().to_dict()
+                    sim_zone_pop = zone_popularity.copy()
 
-                        def calc_dist(p1, p2): return math.hypot(p1[0]-p2[0], p1[1]-p2[1])
-                        
-                        for idx, row in sim_flows.iterrows():
-                            u, v = row['zone'], row['next_zone']
-                            if u in sim_centers and v in sim_centers:
-                                old_d = calc_dist(orig_centers[u], orig_centers[v])
-                                new_d = calc_dist(sim_centers[u], sim_centers[v])
+                    def calc_dist(p1, p2): return math.hypot(p1[0]-p2[0], p1[1]-p2[1])
+                    
+                    for idx, row in sim_flows.iterrows():
+                        u, v = row['zone'], row['next_zone']
+                        if u in sim_centers and v in sim_centers:
+                            old_d = calc_dist(orig_centers[u], orig_centers[v])
+                            new_d = calc_dist(sim_centers[u], sim_centers[v])
+                            
+                            if old_d != new_d and old_d > 0 and new_d > 0:
+                                ratio = max(0.5, min(old_d / new_d, 2.0))
+                                new_weight = row['weight'] * ratio
+                                diff = new_weight - row['weight']
                                 
-                                if old_d != new_d and old_d > 0 and new_d > 0:
-                                    ratio = max(0.5, min(old_d / new_d, 2.0))
-                                    new_weight = row['weight'] * ratio
-                                    diff = new_weight - row['weight']
-                                    
-                                    sim_flows.at[idx, 'weight'] = int(new_weight)
-                                    
-                                    sim_zone_pop[u] = sim_zone_pop.get(u, 0) + diff
-                                    sim_zone_pop[v] = sim_zone_pop.get(v, 0) + diff
+                                sim_flows.at[idx, 'weight'] = int(new_weight)
+                                
+                                sim_zone_pop[u] = sim_zone_pop.get(u, 0) + diff
+                                sim_zone_pop[v] = sim_zone_pop.get(v, 0) + diff
+                    
+                    # ⭐ 1. 모든 구역의 변동량(diff) 계산하여 데이터프레임 만들기
+                    zones_data = []
+                    for k in ZONES.keys():
+                        orig_val = zone_popularity.get(k, 0)
+                        sim_val = int(sim_zone_pop.get(k, 0))
+                        diff = sim_val - orig_val
+                        zones_data.append({'구역': k, '방문횟수': max(0, sim_val), '변동량': diff})
                         
-                        zones_data = []
-                        for k in ZONES.keys():
-                            orig_val = zone_popularity.get(k, 0)
-                            sim_val = int(sim_zone_pop.get(k, 0))
-                            diff = sim_val - orig_val
-                            zones_data.append({'구역': k, '방문횟수': max(0, sim_val), '변동량': diff})
-                            
-                        df_zones_sim = pd.DataFrame(zones_data)
-                        df_zones_sim = df_zones_sim.sort_values('방문횟수', ascending=False)
+                    df_zones_sim = pd.DataFrame(zones_data)
+                    df_zones_sim = df_zones_sim.sort_values('방문횟수', ascending=False)
 
-                        def get_color(row):
-                            if row['구역'] in [swap_a, swap_b]: return '#8B5CF6' # 보라색 (위치 이동된 매대)
-                            elif row['변동량'] > 0: return '#10B981' # 초록색 (수혜 구역)
-                            elif row['변동량'] < 0: return '#EF4444' # 빨간색 (피해 구역)
-                            else: return '#CBD5E1' # 회색 (변화 없음)
-                            
-                        df_zones_sim['색상'] = df_zones_sim.apply(get_color, axis=1)
+                    # ⭐ 2. 색상 규칙 적용 (모든 구역을 증감에 따라 색칠!)
+                    def get_color(row):
+                        if row['구역'] in [swap_a, swap_b]: return '#8B5CF6' # 보라색 (위치 이동된 매대)
+                        elif row['변동량'] > 0: return '#10B981' # 초록색 (수혜 구역)
+                        elif row['변동량'] < 0: return '#EF4444' # 빨간색 (피해 구역)
+                        else: return '#CBD5E1' # 회색 (변화 없음)
                         
-                        df_zones_sim['증감텍스트'] = df_zones_sim['변동량'].apply(lambda x: f"▲ {x:,}" if x > 0 else (f"▼ {abs(x):,}" if x < 0 else "-"))
-                        df_zones_sim['라벨'] = df_zones_sim.apply(lambda x: f"{x['방문횟수']:,} ({x['증감텍스트']})", axis=1)
+                    df_zones_sim['색상'] = df_zones_sim.apply(get_color, axis=1)
+                    
+                    # 막대그래프에 붙일 예쁜 텍스트 라벨 (예: 45,000 (▲ 300))
+                    df_zones_sim['증감텍스트'] = df_zones_sim['변동량'].apply(lambda x: f"▲ {x:,}" if x > 0 else (f"▼ {abs(x):,}" if x < 0 else "-"))
+                    df_zones_sim['라벨'] = df_zones_sim.apply(lambda x: f"{x['방문횟수']:,} ({x['증감텍스트']})", axis=1)
 
-                        st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
-                        
-                        sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
-                        sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
-                        diff_a = sim_a_traffic - zone_popularity.get(swap_a, 0)
-                        diff_b = sim_b_traffic - zone_popularity.get(swap_b, 0)
-                        
-                        metric_col1, metric_col2, metric_col3 = st.columns(3)
-                        metric_col1.metric(f"🔀 [{swap_a}] 매대 변동", f"{sim_a_traffic:,} 회", f"{diff_a:,} 회")
-                        metric_col2.metric(f"🔀 [{swap_b}] 매대 변동", f"{sim_b_traffic:,} 회", f"{diff_b:,} 회")
-                        
-                        other_diffs = {k: v for k, v in zip(df_zones_sim['구역'], df_zones_sim['변동량']) if k not in [swap_a, swap_b]}
-                        top_gainer = max(other_diffs, key=other_diffs.get) if other_diffs else None
-                        top_gainer_diff = other_diffs.get(top_gainer, 0) if top_gainer else 0
-                        
-                        if top_gainer and top_gainer_diff > 0:
-                            metric_col3.metric(f"📈 최대 수혜: [{top_gainer}]", f"{int(sim_zone_pop.get(top_gainer, 0)):,} 회", f"{top_gainer_diff:,} 회")
-                        else:
-                            metric_col3.metric(f"📉 주변부 전반적 하락", "감소", "거리 멀어짐")
-                        
-                        st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+                    st.markdown("### 📊 시뮬레이션 결과 요약 (Before & After)")
+                    
+                    sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
+                    sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
+                    diff_a = sim_a_traffic - zone_popularity.get(swap_a, 0)
+                    diff_b = sim_b_traffic - zone_popularity.get(swap_b, 0)
+                    
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                    metric_col1.metric(f"🔀 [{swap_a}] 매대 변동", f"{sim_a_traffic:,} 회", f"{diff_a:,} 회")
+                    metric_col2.metric(f"🔀 [{swap_b}] 매대 변동", f"{sim_b_traffic:,} 회", f"{diff_b:,} 회")
+                    
+                    other_diffs = {k: v for k, v in zip(df_zones_sim['구역'], df_zones_sim['변동량']) if k not in [swap_a, swap_b]}
+                    top_gainer = max(other_diffs, key=other_diffs.get) if other_diffs else None
+                    top_gainer_diff = other_diffs.get(top_gainer, 0) if top_gainer else 0
+                    
+                    if top_gainer and top_gainer_diff > 0:
+                        metric_col3.metric(f"📈 최대 수혜: [{top_gainer}]", f"{int(sim_zone_pop.get(top_gainer, 0)):,} 회", f"{top_gainer_diff:,} 회")
+                    else:
+                        metric_col3.metric(f"📉 주변부 전반적 하락", "감소", "거리 멀어짐")
+                    
+                    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-                        st.markdown("### 🏆 전체 구역 예상 방문 횟수 (나비효과 컬러 맵핑)", unsafe_allow_html=True)
-                        st.markdown("🟣 **위치 이동** | 🟢 **방문객 증가** | 🔴 **방문객 감소** | ⚪ **변화 없음**")
+                    # ⭐ 3. 전체 구역 방문 횟수 막대그래프 출력
+                    st.markdown("### 🏆 전체 구역 예상 방문 횟수 (나비효과 컬러 맵핑)", unsafe_allow_html=True)
+                    st.markdown("🟣 **위치 이동** | 🟢 **방문객 증가** | 🔴 **방문객 감소** | ⚪ **변화 없음**")
 
-                        bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=5).encode(
-                            x=alt.X('방문횟수:Q', title='예상 방문 횟수 (회)'),
-                            y=alt.Y('구역:N', sort='-x', title=''),
-                            color=alt.Color('색상:N', scale=None, legend=None),
-                            tooltip=['구역', '방문횟수', '변동량']
-                        )
-                        text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=12, fontWeight='bold', color='#1E293B').encode(text='라벨:N')
-                        st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
+                    bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=5).encode(
+                        x=alt.X('방문횟수:Q', title='예상 방문 횟수 (회)'),
+                        y=alt.Y('구역:N', sort='-x', title=''),
+                        color=alt.Color('색상:N', scale=None, legend=None),
+                        tooltip=['구역', '방문횟수', '변동량']
+                    )
+                    text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=12, fontWeight='bold', color='#1E293B').encode(text='라벨:N')
+                    st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
 
-                        st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-                        st.markdown("### 🕸️ 시뮬레이션 동선 흐름도 (Flow Map)")
-                        top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
-                        
-                        G_sim = nx.DiGraph()
-                        for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
-                        for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
-                        
-                        fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
-                        if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.5)
-                        else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
-                        
-                        max_pop = max(list(sim_zone_pop.values())) if sim_zone_pop.values() else 1
-                        
-                        node_colors = []
-                        for node in G_sim.nodes():
-                            diff = int(sim_zone_pop.get(node, 0)) - zone_popularity.get(node, 0)
-                            if node in [swap_a, swap_b]: node_colors.append('#8B5CF6') # 보라색
-                            elif diff > 0: node_colors.append('#10B981') # 초록색
-                            elif diff < 0: node_colors.append('#EF4444') # 빨간색
-                            else: node_colors.append('#CBD5E1') # 회색
-                        
-                        node_sizes = [(sim_zone_pop.get(node, 0) / max_pop) * 1500 + 100 for node in G_sim.nodes()]
-                        max_weight = max([G_sim[u][v]['weight'] for u, v in G_sim.edges()]) if G_sim.edges() else 1
-                        edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
-                        
-                        nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
-                        nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
-                        nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
-                        
-                        ax_sim.axis('off')
-                        st.pyplot(fig_sim)
-                        st.success(f"✨ 시뮬레이션 완료! 보라색으로 칠해진 [{swap_a}]와 [{swap_b}] 매대의 위치가 바뀌면서, 마트 내 30개 모든 구역의 트래픽이 연쇄적으로 재계산되었습니다.")
+                    # ⭐ 4. 시뮬레이션 네트워크 그래프 (노드 색상도 막대그래프와 통일!)
+                    st.markdown("### 🕸️ 시뮬레이션 동선 흐름도 (Flow Map)")
+                    top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
+                    
+                    G_sim = nx.DiGraph()
+                    for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
+                    for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
+                    
+                    # ☀️ 배경을 강제로 하얗게 만듭니다!
+                    fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
+                    if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.5)
+                    else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
+                    
+                    max_pop = max(list(sim_zone_pop.values())) if sim_zone_pop.values() else 1
+                    
+                    node_colors = []
+                    for node in G_sim.nodes():
+                        diff = int(sim_zone_pop.get(node, 0)) - zone_popularity.get(node, 0)
+                        if node in [swap_a, swap_b]: node_colors.append('#8B5CF6') # 보라색
+                        elif diff > 0: node_colors.append('#10B981') # 초록색
+                        elif diff < 0: node_colors.append('#EF4444') # 빨간색
+                        else: node_colors.append('#CBD5E1') # 회색
+                    
+                    node_sizes = [(sim_zone_pop.get(node, 0) / max_pop) * 1500 + 100 for node in G_sim.nodes()]
+                    max_weight = max([G_sim[u][v]['weight'] for u, v in G_sim.edges()]) if G_sim.edges() else 1
+                    edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
+                    
+                    nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
+                    nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
+                    nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
+                    
+                    ax_sim.axis('off')
+                    st.pyplot(fig_sim)
+                    st.success(f"✨ 시뮬레이션 완료! 보라색으로 칠해진 [{swap_a}]와 [{swap_b}] 매대의 위치가 바뀌면서, 마트 내 30개 모든 구역의 트래픽이 연쇄적으로 재계산되었습니다.")
 
 elif menu == "💬 Gemini 매장 비서 (챗봇)":
     st.title("💬 Gemini 매장 운영 비서")
@@ -693,14 +660,13 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
 
 elif menu == "📍 센서(Sward) 위치":
     st.title("📍 매장 내 센서(Sward) 설치 위치")
-    with st.container(border=True):
-        try:
-            sward_df = pd.read_csv('swards (1).csv')
-            fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
-            if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1)
-            else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
-            ax.scatter(sward_df['x'], sward_df['y'], color='#EF4444', s=55, edgecolors='white', linewidth=2, zorder=2)
-            for _, row in sward_df.iterrows(): ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8)
-            ax.axis('off')
-            st.pyplot(fig)
-        except: st.error("'swards (1).csv' 파일을 찾을 수 없습니다.")
+    try:
+        sward_df = pd.read_csv('swards (1).csv')
+        fig, ax = plt.subplots(figsize=(10, 7), dpi=200)
+        if os.path.exists('map_image.jpg'): ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1)
+        else: ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
+        ax.scatter(sward_df['x'], sward_df['y'], color='#EF4444', s=55, edgecolors='white', linewidth=2, zorder=2)
+        for _, row in sward_df.iterrows(): ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8)
+        ax.axis('off')
+        st.pyplot(fig)
+    except: st.error("'swards (1).csv' 파일을 찾을 수 없습니다.")
