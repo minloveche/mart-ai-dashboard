@@ -50,6 +50,11 @@ custom_css = """
     [data-testid="stMetricLabel"] { font-size: 15px; color: #64748B; font-weight: 600; }
     [data-testid="stMetricValue"] { font-size: 36px; color: #2563EB; font-weight: 900; }
     [data-testid="stVerticalBlockBorderWrapper"] { background-color: #FFFFFF !important; border-radius: 15px !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; border: 1px solid #E2E8F0 !important; padding: 15px !important; }
+    
+    /* 탭 디자인 커스텀 */
+    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
+    .stTabs [data-baseweb="tab"] { font-size: 18px; font-weight: bold; color: #64748B; padding: 10px 20px; }
+    .stTabs [aria-selected="true"] { color: #2563EB; border-bottom-color: #2563EB; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -156,101 +161,165 @@ else:
 if menu == "📊 트래픽 요약":
     st.title("📊 마트 트래픽 요약")
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 30px; border-radius: 15px; border-left: 5px solid #3B82F6; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+    <div style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 30px; border-radius: 15px; border-left: 5px solid #3B82F6; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <h4 style="color: #1E3A8A; margin-top: 0;">🔴 실시간 매장 트래픽 모니터링 (BETA)</h4>
         <p style="color: #475569; font-size: 15px; margin-bottom: 0;">🚧 현재 개발 중인 기능입니다.</p>
     </div>
     """, unsafe_allow_html=True)
+    
     if df_all is not None and 'date' in df_all.columns:
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
-        selected_date = st.selectbox("📅 조회할 날짜를 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
-        if selected_date == "전체 누적 보기":
-            filtered_df = df_all
-        else:
-            filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
-            
-        if not filtered_df.empty:
-            total_users = df_all.groupby('date')['real_user_id'].nunique().sum() if selected_date == "전체 누적 보기" else filtered_df['real_user_id'].nunique()
-            col1, col2, col3 = st.columns(3)
-            total_stays = filtered_df['stay_sec'].sum() / 3600
-            top_zone = filtered_df['zone'].value_counts().index[0]
-            col1.metric("해당 기간 방문 고객 (연인원)", f"{total_users:,.0f} 명")
-            col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
-            col3.metric("가장 붐빈 코너 1위", top_zone)
-            
-            st.markdown("<br>### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)", unsafe_allow_html=True)
-            try:
-                trend_df = pd.read_csv("time_trend_light.csv")
-                if selected_date == "전체 누적 보기":
-                    plot_data = trend_df.groupby('time_str')['visitors'].sum().reset_index()
-                    y_title = '총 누적 방문객 수 (명)'
-                else:
-                    plot_data = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
-                    y_title = '동시 체류 방문객 수 (명)'
-                if not plot_data.empty:
-                    base_date = pd.to_datetime("2026-01-01")
-                    plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
-                    chart = alt.Chart(plot_data).mark_area(interpolate='monotone', color='#93C5FD', opacity=0.4).encode(
-                        x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
-                        y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(labelColor='#475569')),
-                        tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
-                    ) + alt.Chart(plot_data).mark_line(interpolate='monotone', color='#3B82F6', strokeWidth=3).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
-                    st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
-                else: st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
-            except: st.error("그래프 생성 중 오류가 발생했습니다.")
-            
-            st.markdown("<br>### 🏆 구역별 전체 방문 횟수", unsafe_allow_html=True)
-            df_zones = filtered_df['zone'].value_counts().reset_index()
-            df_zones.columns = ['구역', '방문횟수']
-            bars = alt.Chart(df_zones).mark_bar(cornerRadiusEnd=5).encode(
-                x=alt.X('방문횟수:Q', title='방문 횟수 (회)'),
-                y=alt.Y('구역:N', sort='-x', title=''),
-                color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
-                tooltip=['구역', '방문횟수']
-            )
-            text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=','))
-            st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
-            
-            st.markdown("<br>### 🕸️ 매장 내 고객 이동 동선 흐름도 (Flow Map)", unsafe_allow_html=True)
-            with st.spinner("동선 흐름도를 렌더링 중입니다..."):
-                flow_df = filtered_df.copy()
-                if 'next_zone' not in flow_df.columns and 'enter_time' in flow_df.columns:
-                    flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
-                    flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
+        
+        # ⭐ [핵심 추가] 탭(Tab) 기능으로 단일 조회와 다중 비교를 완벽 분리!
+        tab1, tab2 = st.tabs(["📅 단일 날짜 상세 리포트", "📈 여러 날짜 흐름 비교"])
+        
+        # ==========================================
+        # 탭 1: 기존 단일 날짜 (혹은 전체 누적) 데이터 보기
+        # ==========================================
+        with tab1:
+            st.markdown("### 🔍 특정 날짜 상세 분석")
+            selected_date = st.selectbox("📅 조회할 날짜를 하나만 선택하세요:", ["전체 누적 보기"] + available_dates, format_func=format_date_option)
+            if selected_date == "전체 누적 보기":
+                filtered_df = df_all
+            else:
+                filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
                 
-                if 'next_zone' in flow_df.columns:
-                    flow_df = flow_df.dropna(subset=['next_zone'])
-                    flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
-                    flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
+            if not filtered_df.empty:
+                total_users = df_all.groupby('date')['real_user_id'].nunique().sum() if selected_date == "전체 누적 보기" else filtered_df['real_user_id'].nunique()
+                col1, col2, col3 = st.columns(3)
+                total_stays = filtered_df['stay_sec'].sum() / 3600
+                top_zone = filtered_df['zone'].value_counts().index[0]
+                col1.metric("해당 기간 방문 고객 (연인원)", f"{total_users:,.0f} 명")
+                col2.metric("고객 총 체류시간", f"{total_stays:,.0f} 시간")
+                col3.metric("가장 붐빈 코너 1위", top_zone)
+                
+                st.markdown("<br>### 🌊 시간대별 매장 정밀 트래픽 흐름 (10분 단위)", unsafe_allow_html=True)
+                try:
+                    trend_df = pd.read_csv("time_trend_light.csv")
+                    if selected_date == "전체 누적 보기":
+                        plot_data = trend_df.groupby('time_str')['visitors'].sum().reset_index()
+                        y_title = '총 누적 방문객 수 (명)'
+                    else:
+                        plot_data = trend_df[trend_df['date'].apply(lambda x: safe_date_match(x, selected_date))]
+                        y_title = '동시 체류 방문객 수 (명)'
+                    if not plot_data.empty:
+                        base_date = pd.to_datetime("2026-01-01")
+                        plot_data['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
+                        chart = alt.Chart(plot_data).mark_area(interpolate='monotone', color='#93C5FD', opacity=0.4).encode(
+                            x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
+                            y=alt.Y('visitors:Q', title=y_title, axis=alt.Axis(labelColor='#475569')),
+                            tooltip=[alt.Tooltip('시간:T', format='%H:%M', title='시간대'), alt.Tooltip('visitors:Q', title='방문객 수')]
+                        ) + alt.Chart(plot_data).mark_line(interpolate='monotone', color='#3B82F6', strokeWidth=3).encode(x=alt.X('시간:T'), y=alt.Y('visitors:Q'))
+                        st.altair_chart(chart.properties(height=380).interactive(), use_container_width=True)
+                    else: st.info("💡 선택하신 날짜의 시간대별 트래픽 데이터가 없습니다.")
+                except: st.error("그래프 생성 중 오류가 발생했습니다.")
+                
+                st.markdown("<br>### 🏆 구역별 전체 방문 횟수", unsafe_allow_html=True)
+                df_zones = filtered_df['zone'].value_counts().reset_index()
+                df_zones.columns = ['구역', '방문횟수']
+                bars = alt.Chart(df_zones).mark_bar(cornerRadiusEnd=5).encode(
+                    x=alt.X('방문횟수:Q', title='방문 횟수 (회)'),
+                    y=alt.Y('구역:N', sort='-x', title=''),
+                    color=alt.Color('방문횟수:Q', scale=alt.Scale(scheme='blues'), legend=None),
+                    tooltip=['구역', '방문횟수']
+                )
+                text = bars.mark_text(align='left', baseline='middle', dx=5, fontSize=13, fontWeight='bold', color='#1E293B').encode(text=alt.Text('방문횟수:Q', format=','))
+                st.altair_chart((bars + text).properties(height=alt.Step(35)), use_container_width=True)
+                
+                st.markdown("<br>### 🕸️ 매장 내 고객 이동 동선 흐름도 (Flow Map)", unsafe_allow_html=True)
+                with st.spinner("동선 흐름도를 렌더링 중입니다..."):
+                    flow_df = filtered_df.copy()
+                    if 'next_zone' not in flow_df.columns and 'enter_time' in flow_df.columns:
+                        flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
+                        flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
                     
-                    if not flow_counts.empty:
-                        top_flows = flow_counts.sort_values('weight', ascending=False).head(100)
-                        zone_popularity = filtered_df['zone'].value_counts().to_dict()
-                        G = nx.DiGraph()
-                        for zone_name in ZONES.keys(): G.add_node(zone_name)
-                        for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
-                        pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
+                    if 'next_zone' in flow_df.columns:
+                        flow_df = flow_df.dropna(subset=['next_zone'])
+                        flow_df = flow_df[flow_df['zone'] != flow_df['next_zone']]
+                        flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                         
-                        # ⭐ 수정됨: facecolor='white' 추가하여 배경을 강제로 하얗게 만듭니다!
-                        fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
-                        img_path = 'map_image.jpg'
-                        try:
-                            img = mpimg.imread(img_path)
-                            ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.5)
-                        except: ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
+                        if not flow_counts.empty:
+                            top_flows = flow_counts.sort_values('weight', ascending=False).head(100)
+                            zone_popularity = filtered_df['zone'].value_counts().to_dict()
+                            G = nx.DiGraph()
+                            for zone_name in ZONES.keys(): G.add_node(zone_name)
+                            for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
+                            pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
+                            
+                            # ☀️ 배경을 강제로 하얗게 만듭니다
+                            fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
+                            img_path = 'map_image.jpg'
+                            try:
+                                img = mpimg.imread(img_path)
+                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.5)
+                            except: ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
+                            
+                            max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
+                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 1500 + 100 for node in G.nodes()]
+                            node_colors = ['#FFB347' if zone_popularity.get(node, 0) > 0 else '#B0BEC5' for node in G.nodes()]
+                            max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
+                            edge_widths = [(G[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G.edges()]
+                            
+                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
+                            nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
+                            nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
+                            ax_flow.axis('off')
+                            st.pyplot(fig_flow)
+            else: st.info("데이터가 없습니다.")
+
+        # ==========================================
+        # ⭐ 탭 2: 다중 날짜 흐름 비교 (새로 추가된 기능!)
+        # ==========================================
+        with tab2:
+            st.markdown("### 📈 여러 날짜 트래픽 흐름 비교 (다중 선택)")
+            st.markdown("비교하고 싶은 날짜들을 체크박스로 여러 개 선택하여 파도(트래픽 흐름)의 차이를 직관적으로 확인해 보세요!")
+            
+            # 다중 선택창 (multiselect) - 기본으로 맨 앞의 2개 날짜를 선택해 둡니다.
+            default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
+            selected_multi_dates = st.multiselect(
+                "📅 비교할 날짜들을 모두 선택하세요:", 
+                available_dates, 
+                default=default_selections,
+                format_func=format_date_option
+            )
+            
+            if selected_multi_dates:
+                try:
+                    trend_df = pd.read_csv("time_trend_light.csv")
+                    
+                    # 선택된 여러 날짜의 데이터만 필터링하는 로직
+                    def is_in_multi(val, targets):
+                        for t in targets:
+                            if safe_date_match(val, t): return True
+                        return False
                         
-                        max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
-                        node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 1500 + 100 for node in G.nodes()]
-                        node_colors = ['#FFB347' if zone_popularity.get(node, 0) > 0 else '#B0BEC5' for node in G.nodes()]
-                        max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
-                        edge_widths = [(G[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G.edges()]
+                    plot_data_multi = trend_df[trend_df['date'].apply(lambda x: is_in_multi(x, selected_multi_dates))].copy()
+                    
+                    if not plot_data_multi.empty:
+                        # 날짜를 예쁘게 (날씨 포함) 표시하기 위해 매핑
+                        plot_data_multi['날짜_라벨'] = plot_data_multi['date'].apply(lambda x: format_date_option(x))
                         
-                        nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
-                        nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
-                        nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
-                        ax_flow.axis('off')
-                        st.pyplot(fig_flow)
-        else: st.info("데이터가 없습니다.")
+                        base_date = pd.to_datetime("2026-01-01")
+                        plot_data_multi['시간'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data_multi['time_str'])
+                        
+                        # 알타이어(Altair) 다중 라인 차트 그리기 (색상을 '날짜_라벨' 기준으로 다르게 지정)
+                        chart_multi = alt.Chart(plot_data_multi).mark_line(interpolate='monotone', strokeWidth=3).encode(
+                            x=alt.X('시간:T', title='시간', axis=alt.Axis(format='%H:%M', labelColor='#475569')),
+                            y=alt.Y('visitors:Q', title='동시 체류 방문객 수 (명)', axis=alt.Axis(labelColor='#475569')),
+                            color=alt.Color('날짜_라벨:N', title='비교 날짜 (색상)', scale=alt.Scale(scheme='category10')),
+                            tooltip=[
+                                alt.Tooltip('날짜_라벨:N', title='해당 날짜'), 
+                                alt.Tooltip('시간:T', format='%H:%M', title='시간대'), 
+                                alt.Tooltip('visitors:Q', title='방문객 수')
+                            ]
+                        )
+                        st.altair_chart(chart_multi.properties(height=450).interactive(), use_container_width=True)
+                    else:
+                        st.info("💡 선택하신 날짜들에 해당하는 트래픽 데이터가 없습니다.")
+                except Exception as e:
+                    st.error("다중 그래프 생성 중 오류가 발생했습니다.")
+            else:
+                st.warning("비교할 날짜를 1개 이상 선택해 주세요.")
 
 elif menu == "🔥 정밀 히트맵":
     st.title("🔥 오리지널 구름 히트맵")
@@ -503,7 +572,7 @@ elif menu == "🔄 매대 이동 시뮬레이터":
                     for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
                     for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                     
-                    # ⭐ 수정됨: facecolor='white' 추가하여 배경을 강제로 하얗게 만듭니다!
+                    # ☀️ 배경을 강제로 하얗게 만듭니다!
                     fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
                     if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.5)
                     else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
