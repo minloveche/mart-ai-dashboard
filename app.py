@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.subplots as plt_subplots
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import matplotlib.image as mpimg
@@ -149,7 +148,6 @@ def load_weather():
         except: pass
     return weather_dict
 
-# ⭐ [추가됨] OS 파케이 데이터를 불러오는 함수
 @st.cache_data
 def load_os_data():
     if os.path.exists("os_traffic_light.parquet"):
@@ -161,7 +159,7 @@ def load_os_data():
 
 df_all = load_all_sessions()
 weather_info = load_weather()
-df_os = load_os_data() # OS 데이터 로드
+df_os = load_os_data()
 
 def safe_date_match(val, target):
     if '-' in str(val) and '-' in str(target): return str(val).strip() == str(target).strip()
@@ -219,9 +217,6 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
-                # ====================================================================
-                # ⭐ [추가됨] OS 기종 비율 전광판 (Time-Series 위에 배치)
-                # ====================================================================
                 if df_os is not None:
                     if selected_date == "All Dates (Cumulative)":
                         os_filtered = df_os
@@ -239,7 +234,6 @@ if menu == "Traffic Summary":
                             iphone_pct = (iphone_count / total_os) * 100
                             
                             st.markdown("<br>#### Device OS Distribution", unsafe_allow_html=True)
-                            # 다크모드에 어울리는 프로페셔널한 프로그레스 바 형태의 CSS 디자인
                             st.markdown(f"""
                             <div style="background-color: #1E293B; padding: 15px 25px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 10px;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
