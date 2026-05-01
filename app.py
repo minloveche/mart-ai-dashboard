@@ -278,7 +278,7 @@ if menu == "Traffic Summary":
                         
                         # 4. 찐 고객들의 평균 체류시간 계산 (분 단위)
                         true_dwell_time = true_dwellers.groupby('zone').agg(
-                            Avg_Dwell_Time=('stay_sec', lambda x: x.mean() / 60.0) 
+                            Avg_Dwell_Time=('stay_sec', lambda x: x.quantile(0.9) / 60.0) 
                         ).reset_index()
                         
                         zone_stats = pd.merge(total_visitors, true_dwell_time, on='zone', how='left')
