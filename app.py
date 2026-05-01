@@ -294,7 +294,6 @@ if menu == "Traffic Summary":
                             tooltip=['zone', 'Visitors', alt.Tooltip('Avg_Dwell_Time:Q', format='.1f', title='Dwell Time (Min)')]
                         )
                         
-                        # 텍스트 가독성을 위해 흰색으로 셋팅
                         text = scatter.mark_text(
                             align='left', baseline='middle', dx=12, color='#F8FAFC', fontSize=12, fontWeight=600
                         ).encode(text='zone')
@@ -345,7 +344,7 @@ if menu == "Traffic Summary":
                             img_path = 'map_image.jpg'
                             try:
                                 img = mpimg.imread(img_path)
-                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.35) # 밝기를 살짝 줄여서 다크모드에 맞게
+                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.35)
                             except: ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
                             
                             max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
@@ -357,13 +356,12 @@ if menu == "Traffic Summary":
                             nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.85)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
                             
-                            # 텍스트 가독성을 위해 흰색 글씨 + 다크 둥근배경
                             nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.9, edgecolor='#334155', boxstyle='round,pad=0.3'))
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
             else: st.info("No data available for the selected parameters.")
 
-        # ⭐ [수정됨] 다중 날짜 비교 탭 (날짜별 스무딩 적용 완료!)
+        # ⭐ [끝판왕 패치] 다중 날짜 비교 - 마우스 호버 자동 수직선 & 수치 표시
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -388,24 +386,48 @@ if menu == "Traffic Summary":
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data_multi['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data_multi['time_str'])
                         
-                        # 날짜별로 그룹을 묶어서 트렌드(평균 곡선)를 각각 계산합니다
+                        # 날짜별 트렌드 스무딩
                         plot_data_multi['Trend'] = plot_data_multi.groupby('date')['visitors'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
                         
-                        highlight = alt.selection_point(fields=['Label'], bind='legend')
-                        
-                        # y축을 Trend(평균치)로 세팅해서 매끄러운 곡선 비교
-                        chart_multi = alt.Chart(plot_data_multi).mark_line(
-                            interpolate='monotone', 
-                            strokeWidth=3.5
-                        ).encode(
+                        # --- [마법의 인터랙티브 교차선(Crosshair) 로직 시작] ---
+                        # 1. 마우스의 X축(시간) 위치를 부드럽게 추적하는 호버 감지기
+                        hover = alt.selection_point(fields=['Time'], nearest=True, on='mouseover', empty=False)
+
+                        # 2. 기본 선 차트 뼈대 (Y축은 부드러운 Trend)
+                        base = alt.Chart(plot_data_multi).encode(
                             x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                             y=alt.Y('Trend:Q', title='Trend (Avg Visitors)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            color=alt.Color('Label:N', title='Legend (Click to Isolate)', scale=alt.Scale(scheme='set2')),
-                            opacity=alt.condition(highlight, alt.value(1.0), alt.value(0.1)),
-                            tooltip=['Label:N', alt.Tooltip('Time:T', format='%H:%M'), alt.Tooltip('visitors:Q', title='Raw Visitors'), alt.Tooltip('Trend:Q', format='.1f', title='Trend')]
-                        ).add_params(highlight)
+                            color=alt.Color('Label:N', title='Legend', scale=alt.Scale(scheme='set2'))
+                        )
+                        line = base.mark_line(interpolate='monotone', strokeWidth=3.5)
+
+                        # 3. 투명한 기둥을 깔아 마우스 움직임을 포착
+                        selectors = alt.Chart(plot_data_multi).mark_point().encode(
+                            x='Time:T', opacity=alt.value(0)
+                        ).add_params(hover)
+
+                        # 4. 마우스가 있는 시간에 맞춰 선 위에 나타날 동그라미(포인트)
+                        points = base.mark_circle(size=80).encode(
+                            opacity=alt.condition(hover, alt.value(1), alt.value(0)),
+                            tooltip=[alt.Tooltip('Time:T', format='%H:%M'), 'Label:N', alt.Tooltip('visitors:Q', title='Raw Visitors'), alt.Tooltip('Trend:Q', format='.1f', title='Trend')]
+                        )
+
+                        # 5. 마우스를 따라다니는 하얀색 수직 점선 (Crosshair)
+                        rule = alt.Chart(plot_data_multi).mark_rule(color='#F8FAFC', strokeWidth=1.5, strokeDash=[4, 4]).encode(
+                            x='Time:T'
+                        ).transform_filter(hover)
                         
-                        st.altair_chart(chart_multi.properties(height=400), use_container_width=True)
+                        # 6. 각 선 옆에 숫자를 바로 띄워주는 텍스트 레이어! (툴팁 볼 필요 없음)
+                        text = base.mark_text(align='left', dx=8, dy=-8, fontSize=14, fontWeight='bold').encode(
+                            text=alt.condition(hover, alt.Text('Trend:Q', format='.0f'), alt.value(' ')),
+                            color=alt.Color('Label:N', scale=alt.Scale(scheme='set2')) # 선 색깔과 글자 색깔 통일
+                        )
+
+                        # 7. 모든 레이어 합치기
+                        chart_multi = (line + selectors + rule + points + text).properties(height=400)
+                        # -----------------------------------------------------
+
+                        st.altair_chart(chart_multi, use_container_width=True)
                         
                         st.markdown("#### Performance Summary")
                         cols = st.columns(len(selected_multi_dates))
@@ -430,7 +452,6 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
-# Heatmap Analysis 다크 모드 캔버스
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
     if df_all is not None and 'date' in df_all.columns:
@@ -535,7 +556,6 @@ elif menu == "Demand Forecast":
 
             except: st.error("Model 'ai_forecaster.pkl' not found.")
 
-# Layout Simulator 다크 모드 캔버스
 elif menu == "Layout Simulator":
     st.title("Layout Simulator")
 
@@ -692,7 +712,6 @@ elif menu == "LLM Assistant":
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             except KeyError: st.error("API Key not found in st.secrets.")
 
-# Sensor Map 다크 모드 캔버스
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
     try:
