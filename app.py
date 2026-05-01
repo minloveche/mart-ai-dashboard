@@ -316,7 +316,8 @@ if menu == "Traffic Summary":
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
                             nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
                             ax_flow.axis('off')
-                            st.pyplot(fig_flow)
+                            # ⭐ 수정: 테마 강제 덮어쓰기 무력화
+                            st.pyplot(fig_flow, theme=None)
             else: st.info("No data available for the selected parameters.")
 
         with tab2:
@@ -416,7 +417,8 @@ elif menu == "Heatmap Analysis":
                     max_val = np.max(heatmap_smoothed)
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
-                    st.pyplot(fig)
+                    # ⭐ 수정: 테마 강제 덮어쓰기 무력화
+                    st.pyplot(fig, theme=None)
 
 elif menu == "Demand Forecast":
     st.title("Demand Forecast")
@@ -607,7 +609,8 @@ elif menu == "Layout Simulator":
                     nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
                     
                     ax_sim.axis('off')
-                    st.pyplot(fig_sim)
+                    # ⭐ 수정: 테마 강제 덮어쓰기 무력화
+                    st.pyplot(fig_sim, theme=None)
 
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
@@ -649,5 +652,6 @@ elif menu == "Sensor Map":
         ax.scatter(sward_df['x'], sward_df['y'], color='#F43F5E', s=55, edgecolors='black', linewidth=1, zorder=2)
         for _, row in sward_df.iterrows(): ax.annotate(str(row['description']), (row['x'], row['y']), xytext=(5, 5), textcoords='offset points', fontsize=8, color='black', fontweight='bold')
         ax.axis('off')
-        st.pyplot(fig)
+        # ⭐ 수정: 테마 강제 덮어쓰기 무력화
+        st.pyplot(fig, theme=None)
     except: st.error("Sensor configuration file not found.")
