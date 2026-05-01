@@ -153,7 +153,6 @@ def format_date_option(d):
     except: return str(d)
 
 st.sidebar.title("Spatial Analytics")
-# ⭐ [NEW] 메뉴에 'Cross-Visitation' 추가 완료!
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "Cross-Visitation", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -482,7 +481,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ⭐ [NEW] 날짜 필터링이 탑재된 실시간 장바구니 연관성 분석 탭
+# ⭐ [에러 완벽 해결!] 날짜 필터링이 탑재된 실시간 장바구니 연관성 분석 탭
 elif menu == "Cross-Visitation":
     st.title("Basket & Cross-Visitation Analysis")
     st.markdown("특정 날짜를 선택하여 고객들이 **어떤 구역을 함께 방문했는지(연관성)**를 분석합니다.")
@@ -501,7 +500,10 @@ elif menu == "Cross-Visitation":
                 unique_visits = cv_base_df.drop_duplicates(subset=['real_user_id', 'zone'])
                 user_zone_matrix = pd.crosstab(unique_visits['real_user_id'], unique_visits['zone'])
                 co_matrix = user_zone_matrix.T.dot(user_zone_matrix)
-                np.fill_diagonal(co_matrix.values, 0)
+                
+                # 오류의 원인이었던 np.fill_diagonal 대신 안전한 for 반복문으로 교체했습니다!
+                for z in co_matrix.columns:
+                    co_matrix.loc[z, z] = 0
 
                 df_melted = co_matrix.reset_index().melt(id_vars='zone', var_name='Target Zone', value_name='Co-Visitors')
                 df_melted = df_melted[df_melted['Co-Visitors'] > 0]
