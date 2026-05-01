@@ -510,8 +510,9 @@ elif menu == "Cross-Visitation":
 
                 if not df_melted.empty:
                     heatmap = alt.Chart(df_melted).mark_rect().encode(
-                        x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155')),
-                        y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        # ⭐ labelOverlap=False 를 추가해서 글자가 생략되는 것을 막았습니다!
+                        x=alt.X('Target Zone:N', title='동시 방문 구역 (함께 간 곳)', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155', labelOverlap=False)),
+                        y=alt.Y('zone:N', title='기준 구역 (시작점)', axis=alt.Axis(gridColor='#334155', domainColor='#334155', labelOverlap=False)),
                         color=alt.Color('Co-Visitors:Q', scale=alt.Scale(scheme='purples'), legend=alt.Legend(title="동시 방문자 수")),
                         tooltip=[
                             alt.Tooltip('zone:N', title='기준 구역'), 
