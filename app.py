@@ -149,19 +149,8 @@ def load_weather():
         except: pass
     return weather_dict
 
-# ⭐ [추가됨] OS 기종별 트래픽 데이터를 불러오는 함수 (안전장치 포함)
-@st.cache_data
-def load_os_data():
-    if os.path.exists("os_traffic_light.parquet"):
-        try:
-            return pd.read_parquet("os_traffic_light.parquet")
-        except:
-            return None
-    return None
-
 df_all = load_all_sessions()
 weather_info = load_weather()
-df_os = load_os_data() # OS 데이터 로드
 
 def safe_date_match(val, target):
     if '-' in str(val) and '-' in str(target): return str(val).strip() == str(target).strip()
@@ -201,8 +190,7 @@ if menu == "Traffic Summary":
     
     if df_all is not None and 'date' in df_all.columns:
         available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
-        # ⭐ [탭 추가] 3번째 탭인 Device OS Analytics 추가
-        tab1, tab2, tab3 = st.tabs(["Single Date Analysis", "Multi-Date Comparison", "Device OS Analytics"])
+        tab1, tab2 = st.tabs(["Single Date Analysis", "Multi-Date Comparison"])
         
         with tab1:
             selected_date = st.selectbox("Select Date:", ["All Dates (Cumulative)"] + available_dates, format_func=format_date_option)
@@ -251,6 +239,7 @@ if menu == "Traffic Summary":
                 )
                 st.altair_chart(bars.properties(height=alt.Step(25)), use_container_width=True)
                 
+                # ⭐ 수정된 부분: Customer Flow Map 밝고 뚜렷하게 복구
                 st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
                 with st.spinner("Rendering flow map..."):
                     flow_df = filtered_df.copy()
@@ -271,6 +260,7 @@ if menu == "Traffic Summary":
                             for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
+                            # 배경 흰색, 도면 밝기(alpha=0.5) 복구
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150, facecolor='white')
                             ax_flow.set_facecolor('white')
                             img_path = 'map_image.jpg'
@@ -285,6 +275,7 @@ if menu == "Traffic Summary":
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
                             edge_widths = [(G[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G.edges()]
                             
+                            # 글씨 검은색, 엣지 주황색/파란색으로 선명하게
                             nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2, alpha=0.85)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
                             nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
@@ -352,81 +343,6 @@ if menu == "Traffic Summary":
                                     </div>
                                     """, unsafe_allow_html=True)
                 except: pass
-
-        # ==========================================
-        # ⭐ [새로 추가된 기능] 탭 3: 기종별(OS) 트래픽 분석
-        # ==========================================
-        with tab3:
-            st.markdown("### 📱 Device OS Analytics")
-            
-            # 파이썬 추출기에서 만든 파일이 존재하는지 1차 확인
-            if df_os is None:
-                st.info("💡 **데이터 대기 중:** 깃허브에 `os_traffic_light.parquet` 파일이 아직 업로드되지 않았습니다. 추출기 파이썬 코드를 로컬에서 실행하신 후 파일을 업로드해 주세요!")
-            else:
-                # 파일이 있으면 정상적으로 분석 진행
-                os_dates = sorted(df_os['date'].unique().tolist(), key=sort_date_smart)
-                selected_os_date = st.selectbox("Select Date for OS Analysis:", ["All Dates (Cumulative)"] + os_dates, format_func=format_date_option)
-                
-                if selected_os_date == "All Dates (Cumulative)":
-                    filtered_os = df_os
-                else:
-                    filtered_os = df_os[df_os['date'].apply(lambda x: safe_date_match(x, selected_os_date))]
-                
-                if not filtered_os.empty:
-                    # 1. 기종별 비율 계산
-                    os_counts = filtered_os['os'].value_counts().reset_index()
-                    os_counts.columns = ['OS', 'Count']
-                    total_os = os_counts['Count'].sum()
-                    
-                    android_cnt = int(os_counts[os_counts['OS'] == 'Android']['Count'].sum())
-                    iphone_cnt = int(os_counts[os_counts['OS'] == 'iPhone']['Count'].sum())
-                    
-                    android_pct = (android_cnt / total_os * 100) if total_os > 0 else 0
-                    iphone_pct = (iphone_cnt / total_os * 100) if total_os > 0 else 0
-                    
-                    # 지표 카드 출력 (애플은 은색/파란계열, 안드로이드는 초록계열 강조)
-                    os_col1, os_col2 = st.columns(2)
-                    os_col1.markdown(f"""
-                        <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-top: 4px solid #10B981; text-align: center;">
-                            <p style="color: #94A3B8; font-size: 16px; margin-bottom: 5px;">🤖 Android Users</p>
-                            <h3 style="color: #10B981; margin: 0; font-size: 28px;">{android_cnt:,.0f} <span style="font-size:14px; color:#64748B;">({android_pct:.1f}%)</span></h3>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    os_col2.markdown(f"""
-                        <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-top: 4px solid #38BDF8; text-align: center;">
-                            <p style="color: #94A3B8; font-size: 16px; margin-bottom: 5px;">🍎 iPhone Users</p>
-                            <h3 style="color: #38BDF8; margin: 0; font-size: 28px;">{iphone_cnt:,.0f} <span style="font-size:14px; color:#64748B;">({iphone_pct:.1f}%)</span></h3>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown("<br>#### OS Traffic Time-Series", unsafe_allow_html=True)
-                    
-                    # 2. 시간대별 OS 트래픽 집계
-                    filtered_os['hour_min'] = filtered_os['time'].str[:5] # 분 단위까지만 절사하여 그룹화
-                    time_os_trend = filtered_os.groupby(['hour_min', 'os']).size().reset_index(name='Visitors')
-                    
-                    base_date = pd.to_datetime("2026-01-01")
-                    time_os_trend['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + time_os_trend['hour_min'])
-                    
-                    # 차트 색상 매핑 (안드로이드 = 초록색, 아이폰 = 파란색)
-                    os_color_scale = alt.Scale(
-                        domain=['Android', 'iPhone'],
-                        range=['#10B981', '#38BDF8']
-                    )
-                    
-                    # 영역 차트 (Stacked Area Chart)
-                    os_chart = alt.Chart(time_os_trend).mark_area(interpolate='monotone', opacity=0.7).encode(
-                        x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', gridColor='#334155', domainColor='#334155')),
-                        y=alt.Y('Visitors:Q', title='Concurrent Users', stack='zero', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                        color=alt.Color('os:N', title='Device OS', scale=os_color_scale),
-                        tooltip=[alt.Tooltip('Time:T', format='%H:%M'), 'os:N', 'Visitors:Q']
-                    ).properties(height=350).interactive()
-                    
-                    st.altair_chart(os_chart, use_container_width=True)
-                    
-                else:
-                    st.info("데이터가 없습니다.")
-
 
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
@@ -624,6 +540,7 @@ elif menu == "Layout Simulator":
                     )
                     st.altair_chart(bars.properties(height=alt.Step(22)), use_container_width=True)
 
+                    # ⭐ 수정된 부분: Simulated Flow Graph 밝고 뚜렷하게 복구
                     st.markdown("#### Simulated Flow Graph")
                     top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
                     
@@ -651,7 +568,7 @@ elif menu == "Layout Simulator":
                     edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
                     
                     nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=node_sizes, node_color=node_colors, edgecolors='black', linewidths=1.2)
-                    nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#475569', arrowsize=10, alpha=0.5, connectionstyle='arc3,rad=0.2')
+                    nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
                     nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='black', bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', boxstyle='round,pad=0.3'))
                     
                     ax_sim.axis('off')
@@ -686,6 +603,7 @@ elif menu == "LLM Assistant":
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             except KeyError: st.error("API Key not found in st.secrets.")
 
+# ⭐ 수정된 부분: Sensor Map 밝고 뚜렷하게 복구
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
     try:
