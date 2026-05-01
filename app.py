@@ -24,7 +24,6 @@ except ImportError:
 # --- [1. 기본 설정 및 다크모드 폰트] ---
 st.set_page_config(page_title="Retail Spatial Analytics", layout="wide")
 
-# Altair 및 Matplotlib 다크 테마 적용
 alt.theme.enable('dark')
 plt.style.use('dark_background')
 
@@ -62,7 +61,6 @@ custom_css = """
     li[role="option"]:hover, li[aria-selected="true"] { background-color: #334155 !important; color: #38BDF8 !important; }
     div[data-baseweb="select"] > div { background-color: #0F172A !important; border-color: #334155 !important; color: #F8FAFC !important; }
     div[data-baseweb="select"] span { color: #F8FAFC !important; }
-    /* 아코디언(expander) 디자인 깔끔하게 튜닝 */
     [data-testid="stExpander"] { background-color: #1E293B; border: 1px solid #334155; border-radius: 8px; }
     [data-testid="stExpander"] summary p { font-weight: 600; color: #38BDF8; }
 </style>
@@ -188,7 +186,6 @@ if menu == "Traffic Summary":
                 col2.metric("Total Dwell Time (Hrs)", f"{total_stays:,.0f}")
                 col3.metric("Top Zone", top_zone)
                 
-                # OS 비율 전광판
                 if df_os is not None:
                     if selected_date == "All Dates (Cumulative)":
                         android_count = df_os[df_os['os'] == 'Android']['count'].sum()
@@ -217,7 +214,6 @@ if menu == "Traffic Summary":
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # 수직선 탑재 고급 트렌드 차트
                 st.markdown("<br>#### Time-Series Traffic (Advanced Trend Analysis)", unsafe_allow_html=True)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
@@ -231,7 +227,6 @@ if menu == "Traffic Summary":
                     if not plot_data.empty:
                         base_date = pd.to_datetime("2026-01-01")
                         plot_data['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + plot_data['time_str'])
-                        
                         plot_data['Trend'] = plot_data['visitors'].rolling(window=3, min_periods=1).mean()
                         
                         peak_row = plot_data.loc[plot_data['visitors'].idxmax()]
@@ -248,13 +243,8 @@ if menu == "Traffic Summary":
                         line_chart = alt.Chart(plot_data).mark_line(
                             interpolate='monotone', color='#38BDF8', strokeWidth=3.5
                         ).encode(
-                            x='Time:T',
-                            y='Trend:Q',
-                            tooltip=[
-                                alt.Tooltip('Time:T', format='%H:%M', title='Time'), 
-                                alt.Tooltip('visitors:Q', title='Raw Visitors'),
-                                alt.Tooltip('Trend:Q', format='.1f', title='Trend (Avg)')
-                            ]
+                            x='Time:T', y='Trend:Q',
+                            tooltip=[alt.Tooltip('Time:T', format='%H:%M', title='Time'), alt.Tooltip('visitors:Q', title='Raw Visitors'), alt.Tooltip('Trend:Q', format='.1f', title='Trend (Avg)')]
                         )
                         
                         peak_point = alt.Chart(pd.DataFrame({'Time': [peak_time], 'visitors': [peak_val]})).mark_circle(
@@ -262,8 +252,7 @@ if menu == "Traffic Summary":
                         ).encode(x='Time:T', y='visitors:Q')
                         
                         peak_text = alt.Chart(pd.DataFrame({'Time': [peak_time], 'visitors': [peak_val]})).mark_text(
-                            align='left', baseline='middle', dx=12, dy=-12, color='#F43F5E', fontSize=14, fontWeight='bold',
-                            text=f'🔥 Peak: {peak_val:.0f}'
+                            align='left', baseline='middle', dx=12, dy=-12, color='#F43F5E', fontSize=14, fontWeight='bold', text=f'🔥 Peak: {peak_val:.0f}'
                         ).encode(x='Time:T', y='visitors:Q')
                         
                         final_combo_chart = (area_chart + line_chart + peak_point + peak_text).properties(height=350)
@@ -271,22 +260,32 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # ⭐ 찐 체류시간 4사분면 차트 (30초 미만 체류 제외 패치 적용)
+                # ⭐ [핵심 패치] 고객별 체류시간 사전 합산 로직 완벽 적용
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating True Dwell Times..."):
                     
-                    MIN_STAY_SEC = 30 # 30초 미만으로 스쳐간 사람 제외
+                    MIN_STAY_SEC = 30 # 30초 미만 통과객 제외
                     
                     if 'stay_sec' in filtered_df.columns:
-                        total_visitors = filtered_df.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
-                        true_dwellers = filtered_df[filtered_df['stay_sec'] >= MIN_STAY_SEC]
+                        # 1. 쪼개진 데이터를 고객(real_user_id) 단위로 먼저 합산(sum)합니다!
+                        user_zone_duration = filtered_df.groupby(['zone', 'real_user_id'])['stay_sec'].sum().reset_index()
+                        
+                        # 2. 방문객 수는 해당 구역을 밟은 모든 유저 카운트
+                        total_visitors = user_zone_duration.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
+                        
+                        # 3. 합산된 체류시간이 30초 이상인 찐 고객만 필터링
+                        true_dwellers = user_zone_duration[user_zone_duration['stay_sec'] >= MIN_STAY_SEC]
+                        
+                        # 4. 찐 고객들의 평균 체류시간 계산 (분 단위)
                         true_dwell_time = true_dwellers.groupby('zone').agg(
                             Avg_Dwell_Time=('stay_sec', lambda x: x.mean() / 60.0) 
                         ).reset_index()
                         
                         zone_stats = pd.merge(total_visitors, true_dwell_time, on='zone', how='left')
                         zone_stats['Avg_Dwell_Time'] = zone_stats['Avg_Dwell_Time'].fillna(0)
+                        
                     else:
+                        # stay_sec이 없을 경우 (로그 개수로 계산할 때도 유저 단위 합산)
                         zone_user_stats = filtered_df.groupby(['zone', 'real_user_id']).size().reset_index(name='log_count')
                         zone_user_stats['dwell_time_min'] = (zone_user_stats['log_count'] * 10) / 60.0 
                         
@@ -322,7 +321,7 @@ if menu == "Traffic Summary":
                         with st.expander("💡 Tip"):
                             st.markdown("""
                             **십자선(빨간 점선)은 전체 평균을 의미합니다.**
-                            - **산출 기준:** 단순 통과객으로 인한 데이터 왜곡을 막기 위해, **해당 구역에 30초 이상 머문 고객의 데이터만 추출하여 '진짜 체류시간(True Dwell Time)'을 산출**했습니다.
+                            - **산출 기준:** 센서 데이터의 단편화(분할) 현상을 보정하기 위해 **고객별 총 머문 시간을 합산**한 뒤, 단순 통과객(30초 미만)을 제외한 **'진짜 체류시간(True Dwell Time)'**을 산출했습니다.
                             - **우상단 (Golden Zone):** 방문객도 많고 오래 머무는 핵심 매출 구역
                             - **우하단 (통로 구역):** 스쳐 지나가는 통로 (충동구매 상품 배치 권장)
                             - **좌상단 (목적 구매 구역):** 소수 마니아가 꼼꼼히 고르는 구역
