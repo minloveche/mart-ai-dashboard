@@ -260,23 +260,16 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # ⭐ [핵심 패치] 고객별 체류시간 사전 합산 로직 완벽 적용
+                # Zone Performance (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating True Dwell Times..."):
                     
-                    MIN_STAY_SEC = 30 # 30초 미만 통과객 제외
+                    MIN_STAY_SEC = 30 
                     
                     if 'stay_sec' in filtered_df.columns:
-                        # 1. 쪼개진 데이터를 고객(real_user_id) 단위로 먼저 합산(sum)합니다!
                         user_zone_duration = filtered_df.groupby(['zone', 'real_user_id'])['stay_sec'].sum().reset_index()
-                        
-                        # 2. 방문객 수는 해당 구역을 밟은 모든 유저 카운트
                         total_visitors = user_zone_duration.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
-                        
-                        # 3. 합산된 체류시간이 30초 이상인 찐 고객만 필터링
                         true_dwellers = user_zone_duration[user_zone_duration['stay_sec'] >= MIN_STAY_SEC]
-                        
-                        # 4. 찐 고객들의 평균 체류시간 계산 (분 단위)
                         true_dwell_time = true_dwellers.groupby('zone').agg(
                             Avg_Dwell_Time=('stay_sec', lambda x: x.quantile(0.9) / 60.0) 
                         ).reset_index()
@@ -285,14 +278,12 @@ if menu == "Traffic Summary":
                         zone_stats['Avg_Dwell_Time'] = zone_stats['Avg_Dwell_Time'].fillna(0)
                         
                     else:
-                        # stay_sec이 없을 경우 (로그 개수로 계산할 때도 유저 단위 합산)
                         zone_user_stats = filtered_df.groupby(['zone', 'real_user_id']).size().reset_index(name='log_count')
                         zone_user_stats['dwell_time_min'] = (zone_user_stats['log_count'] * 10) / 60.0 
-                        
                         total_visitors = zone_user_stats.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
                         true_dwellers = zone_user_stats[zone_user_stats['dwell_time_min'] >= (MIN_STAY_SEC / 60.0)]
                         true_dwell_time = true_dwellers.groupby('zone').agg(
-                            Avg_Dwell_Time=('dwell_time_min', 'mean')
+                            Avg_Dwell_Time=('dwell_time_min', lambda x: x.quantile(0.9))
                         ).reset_index()
                         
                         zone_stats = pd.merge(total_visitors, true_dwell_time, on='zone', how='left')
@@ -720,6 +711,42 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='#0F172A')
 
+                    # ⭐ [NEW] 수학적 시뮬레이션 직후에 AI 심리 분석 리포트가 자동으로 생성됩니다!
+                    st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
+                    if HAS_GENAI:
+                        with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
+                            try:
+                                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                
+                                top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
+                                
+                                ai_prompt = f"""
+                                당신은 데이터 기반 리테일 공간 디자이너입니다.
+                                마트에서 '{swap_a}' 구역과 '{swap_b}' 구역의 위치를 맞바꾸는 시뮬레이션을 실행했습니다.
+                                거리 기반 수학적 시뮬레이션 결과:
+                                - {swap_a} 트래픽 변화: {diff_a:+,}명
+                                - {swap_b} 트래픽 변화: {diff_b:+,}명
+                                - 가장 큰 반사이익(Spillover)을 얻은 주변 구역: {top_gainer_text}
+
+                                이 수학적 데이터를 바탕으로, 실제 고객의 쇼핑 심리와 동선 변화를 탐색하여 다음을 브리핑해주세요:
+                                1. 매대 변경 후 예상되는 고객 동선 흐름의 변화 (왜 이렇게 움직일지 심리적 이유)
+                                2. 이 레이아웃으로 인해 발생할 새로운 연관 구매(Cross-selling) 기회
+                                3. 현장 적용 시 점장님이 주의해야 할 병목현상 또는 리스크
+                                
+                                매우 전문적이고 확신에 찬 어조로, 마크다운 리스트 형식으로 깔끔하고 구체적이게 답변하세요.
+                                """
+                                response = model.generate_content(ai_prompt)
+                                st.markdown(f"""
+                                <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-left: 4px solid #38BDF8; color: #F8FAFC;">
+                                    {response.text}
+                                </div>
+                                """, unsafe_allow_html=True)
+                            except Exception as e:
+                                st.warning("AI 인사이트를 불러올 수 없습니다. API 키 설정을 확인해주세요.")
+                    else:
+                        st.info("AI 모듈이 설치되어 있지 않습니다. google-generativeai 모듈을 확인해주세요.")
+
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
     if not HAS_GENAI: 
@@ -736,13 +763,12 @@ elif menu == "LLM Assistant":
                             elif 'pro' in m.name: best_model = m.name
                 except: pass
                 
-                # --- [핵심 추가] 현재 데이터 상태를 요약하여 컨텍스트 문자열 생성 ---
+                # --- 현재 데이터 상태를 요약하여 컨텍스트 문자열 생성 ---
                 system_context = (
                     "당신은 리테일 매장의 공간 분석 및 운영 어드바이저입니다.\n"
                     "다음은 현재 대시보드에서 분석 중인 실시간 데이터 맥락입니다:\n"
                 )
                 
-                # 1. 트래픽 요약 데이터 주입
                 if df_all is not None and not df_all.empty:
                     total_visitors = df_all['real_user_id'].nunique()
                     top_zone = df_all['zone'].value_counts().index[0]
@@ -753,7 +779,6 @@ elif menu == "LLM Assistant":
                     system_context += f"- 가장 인기 있는 밀집 구역(Top Zone): {top_zone}\n"
                     system_context += f"- 매장 내 관리 구역 목록: {', '.join(list(ZONES.keys()))}\n"
                 
-                # 2. OS 비율 데이터 주입
                 if df_os is not None and not df_os.empty:
                     android_count = df_os[df_os['os'] == 'Android']['count'].sum()
                     iphone_count = df_os[df_os['os'] == 'iPhone']['count'].sum()
@@ -764,12 +789,10 @@ elif menu == "LLM Assistant":
                     "구체적이고 전문적인 솔루션을 제공해 주세요."
                 )
                 
-                # 모델 초기화 시 시스템 프롬프트(system_instruction) 주입
                 model = genai.GenerativeModel(
                     model_name=best_model,
                     system_instruction=system_context
                 )
-                # -----------------------------------------------------------
                 
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
                 for msg in st.session_state.chat_history:
@@ -780,7 +803,6 @@ elif menu == "LLM Assistant":
                     with st.chat_message("user"): st.markdown(prompt)
                     with st.chat_message("assistant"):
                         with st.spinner("데이터 맥락을 해석하여 답변을 생성 중입니다..."):
-                            # 이제 모델은 내부적으로 system_context를 인지한 상태로 답변합니다.
                             response = model.generate_content(prompt)
                             st.markdown(response.text)
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
