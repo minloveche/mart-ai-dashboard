@@ -650,6 +650,7 @@ elif menu == "Layout Simulator":
                         
                     df_zones_sim['Color'] = df_zones_sim.apply(get_color, axis=1)
                     
+                    # 1단: 숫자로 보는 명확한 성적표 (Impact Analysis)
                     st.markdown("#### Impact Analysis")
                     sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
                     sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
@@ -669,6 +670,58 @@ elif menu == "Layout Simulator":
                     else:
                         metric_col3.metric("Spillover Impact", "N/A", "Distance decay")
                     
+                    # ⭐ 2단: 숫자를 바탕으로 한 AI의 두괄식 브리핑 (하이브리드 배치)
+                    st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
+                    if HAS_GENAI:
+                        with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
+                            try:
+                                if "GEMINI_API_KEY" in st.secrets:
+                                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                else:
+                                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
+                                
+                                ai_model_name = 'gemini-pro' 
+                                try:
+                                    for m in genai.list_models():
+                                        if 'generateContent' in m.supported_generation_methods:
+                                            if 'flash' in m.name.lower():
+                                                ai_model_name = m.name
+                                                break
+                                except: pass
+                                
+                                model = genai.GenerativeModel(ai_model_name)
+                                top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
+                                
+                                ai_prompt = f"""
+                                당신은 데이터 기반 리테일 공간 디자이너입니다.
+                                마트에서 '{swap_a}' 구역과 '{swap_b}' 구역의 위치를 맞바꾸는 시뮬레이션을 실행했습니다.
+                                거리 기반 수학적 시뮬레이션 결과:
+                                - {swap_a} 트래픽 변화: {diff_a:+,}명
+                                - {swap_b} 트래픽 변화: {diff_b:+,}명
+                                - 가장 큰 반사이익(Spillover)을 얻은 주변 구역: {top_gainer_text}
+
+                                이 수학적 데이터를 바탕으로, 실제 고객의 쇼핑 심리와 동선 변화를 탐색하여 다음을 브리핑해주세요:
+                                1. 매대 변경 후 예상되는 고객 동선 흐름의 변화 (왜 이렇게 움직일지 심리적 이유)
+                                2. 이 레이아웃으로 인해 발생할 새로운 연관 구매(Cross-selling) 기회
+                                3. 현장 적용 시 점장님이 주의해야 할 병목현상 또는 리스크
+                                
+                                매우 전문적이고 확신에 찬 어조로, 마크다운 리스트 형식으로 깔끔하고 구체적이게 답변하세요.
+                                """
+                                response = model.generate_content(ai_prompt)
+                                st.markdown(f"""
+                                <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-left: 4px solid #38BDF8; color: #F8FAFC;">
+                                    {response.text}
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                            except ValueError as ve:
+                                st.warning(f"서버 보안 설정 필요: {ve}")
+                            except Exception as e:
+                                st.error(f"AI 인사이트를 불러올 수 없습니다. 오류: {e}")
+                    else:
+                        st.info("AI 모듈이 설치되어 있지 않습니다.")
+
+                    # 3단: 근거 확인을 위한 시각화 맵과 바 차트
                     st.markdown("<br>#### Post-Simulation Distribution", unsafe_allow_html=True)
                     bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=3, height=15).encode(
                         x=alt.X('Visits:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
@@ -712,57 +765,6 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='#0F172A')
 
-                    st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
-                    if HAS_GENAI:
-                        with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
-                            try:
-                                if "GEMINI_API_KEY" in st.secrets:
-                                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                else:
-                                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
-                                
-                                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
-                                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
-                                try:
-                                    for m in genai.list_models():
-                                        if 'generateContent' in m.supported_generation_methods:
-                                            if 'flash' in m.name.lower():
-                                                ai_model_name = m.name
-                                                break
-                                except: pass
-                                
-                                model = genai.GenerativeModel(ai_model_name)
-                                top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
-                                
-                                ai_prompt = f"""
-                                당신은 데이터 기반 리테일 공간 디자이너입니다.
-                                마트에서 '{swap_a}' 구역과 '{swap_b}' 구역의 위치를 맞바꾸는 시뮬레이션을 실행했습니다.
-                                거리 기반 수학적 시뮬레이션 결과:
-                                - {swap_a} 트래픽 변화: {diff_a:+,}명
-                                - {swap_b} 트래픽 변화: {diff_b:+,}명
-                                - 가장 큰 반사이익(Spillover)을 얻은 주변 구역: {top_gainer_text}
-
-                                이 수학적 데이터를 바탕으로, 실제 고객의 쇼핑 심리와 동선 변화를 탐색하여 다음을 브리핑해주세요:
-                                1. 매대 변경 후 예상되는 고객 동선 흐름의 변화 (왜 이렇게 움직일지 심리적 이유)
-                                2. 이 레이아웃으로 인해 발생할 새로운 연관 구매(Cross-selling) 기회
-                                3. 현장 적용 시 점장님이 주의해야 할 병목현상 또는 리스크
-                                
-                                매우 전문적이고 확신에 찬 어조로, 마크다운 리스트 형식으로 깔끔하고 구체적이게 답변하세요.
-                                """
-                                response = model.generate_content(ai_prompt)
-                                st.markdown(f"""
-                                <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-left: 4px solid #38BDF8; color: #F8FAFC;">
-                                    {response.text}
-                                </div>
-                                """, unsafe_allow_html=True)
-                                
-                            except ValueError as ve:
-                                st.warning(f"서버 보안 설정 필요: {ve}")
-                            except Exception as e:
-                                st.error(f"AI 인사이트를 불러올 수 없습니다. 오류: {e}")
-                    else:
-                        st.info("AI 모듈이 설치되어 있지 않습니다.")
-
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
     if not HAS_GENAI: 
@@ -775,8 +777,7 @@ elif menu == "LLM Assistant":
                 else:
                     raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                 
-                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
-                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
+                ai_model_name = 'gemini-pro' 
                 try:
                     for m in genai.list_models():
                         if 'generateContent' in m.supported_generation_methods:
