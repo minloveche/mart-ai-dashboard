@@ -155,8 +155,6 @@ def format_date_option(d):
 
 st.sidebar.title("Spatial Analytics")
 
-# ⭐ 입력칸 제거됨! 사이드바가 아주 깔끔해졌습니다.
-
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -714,18 +712,26 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='#0F172A')
 
-                    # ⭐ [서버 Secrets 적용 완료] API 키를 서버 금고에서만 조용히 꺼내옵니다.
                     st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
                     if HAS_GENAI:
                         with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
                             try:
-                                # 서버의 금고(secrets)에서만 키를 찾습니다.
                                 if "GEMINI_API_KEY" in st.secrets:
                                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                                 else:
                                     raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                                 
-                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
+                                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
+                                try:
+                                    for m in genai.list_models():
+                                        if 'generateContent' in m.supported_generation_methods:
+                                            if 'flash' in m.name.lower():
+                                                ai_model_name = m.name
+                                                break
+                                except: pass
+                                
+                                model = genai.GenerativeModel(ai_model_name)
                                 top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
                                 
                                 ai_prompt = f"""
@@ -764,18 +770,19 @@ elif menu == "LLM Assistant":
     else:
         with st.container():
             try:
-                # ⭐ [서버 Secrets 적용 완료] LLM Assistant도 서버 금고에서만 키를 가져옵니다.
                 if "GEMINI_API_KEY" in st.secrets:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                 else:
                     raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                 
-                best_model = 'gemini-1.5-flash'
+                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
+                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
                 try:
                     for m in genai.list_models():
                         if 'generateContent' in m.supported_generation_methods:
-                            if 'flash' in m.name: best_model = m.name; break
-                            elif 'pro' in m.name: best_model = m.name
+                            if 'flash' in m.name.lower():
+                                ai_model_name = m.name
+                                break
                 except: pass
                 
                 system_context = (
@@ -804,7 +811,7 @@ elif menu == "LLM Assistant":
                 )
                 
                 model = genai.GenerativeModel(
-                    model_name=best_model,
+                    model_name=ai_model_name,
                     system_instruction=system_context
                 )
                 
