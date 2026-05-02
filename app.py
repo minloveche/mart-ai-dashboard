@@ -154,6 +154,9 @@ def format_date_option(d):
     except: return str(d)
 
 st.sidebar.title("Spatial Analytics")
+
+# ⭐ 입력칸 제거됨! 사이드바가 아주 깔끔해졌습니다.
+
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -711,14 +714,18 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='#0F172A')
 
-                    # ⭐ [NEW] 수학적 시뮬레이션 직후에 AI 심리 분석 리포트가 자동으로 생성됩니다!
+                    # ⭐ [서버 Secrets 적용 완료] API 키를 서버 금고에서만 조용히 꺼내옵니다.
                     st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
                     if HAS_GENAI:
                         with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
                             try:
-                                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                # 서버의 금고(secrets)에서만 키를 찾습니다.
+                                if "GEMINI_API_KEY" in st.secrets:
+                                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                else:
+                                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                                 
+                                model = genai.GenerativeModel('gemini-1.5-flash')
                                 top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
                                 
                                 ai_prompt = f"""
@@ -742,10 +749,13 @@ elif menu == "Layout Simulator":
                                     {response.text}
                                 </div>
                                 """, unsafe_allow_html=True)
+                                
+                            except ValueError as ve:
+                                st.warning(f"서버 보안 설정 필요: {ve}")
                             except Exception as e:
-                                st.warning("AI 인사이트를 불러올 수 없습니다. API 키 설정을 확인해주세요.")
+                                st.error(f"AI 인사이트를 불러올 수 없습니다. 오류: {e}")
                     else:
-                        st.info("AI 모듈이 설치되어 있지 않습니다. google-generativeai 모듈을 확인해주세요.")
+                        st.info("AI 모듈이 설치되어 있지 않습니다.")
 
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
@@ -754,7 +764,12 @@ elif menu == "LLM Assistant":
     else:
         with st.container():
             try:
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                # ⭐ [서버 Secrets 적용 완료] LLM Assistant도 서버 금고에서만 키를 가져옵니다.
+                if "GEMINI_API_KEY" in st.secrets:
+                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                else:
+                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
+                
                 best_model = 'gemini-1.5-flash'
                 try:
                     for m in genai.list_models():
@@ -763,7 +778,6 @@ elif menu == "LLM Assistant":
                             elif 'pro' in m.name: best_model = m.name
                 except: pass
                 
-                # --- 현재 데이터 상태를 요약하여 컨텍스트 문자열 생성 ---
                 system_context = (
                     "당신은 리테일 매장의 공간 분석 및 운영 어드바이저입니다.\n"
                     "다음은 현재 대시보드에서 분석 중인 실시간 데이터 맥락입니다:\n"
@@ -807,7 +821,10 @@ elif menu == "LLM Assistant":
                             st.markdown(response.text)
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
                             
-            except KeyError: st.error("API Key not found in st.secrets.")
+            except ValueError as ve:
+                st.warning(f"서버 보안 설정 필요: {ve}")
+            except Exception as e: 
+                st.error(f"API 연결에 실패했습니다. 오류: {e}")
 
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
