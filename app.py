@@ -652,13 +652,12 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='white')
 
-elif menu == "💬 Gemini 매장 비서 (챗봇)":
-    st.title("💬 Gemini 매장 운영 비서")
-    
+elif menu == "LLM Assistant":
+    st.title("LLM Operations Advisor")
     if not HAS_GENAI: 
-        st.error("google-generativeai 라이브러리가 없습니다.")
+        st.error("google-generativeai module not found.")
     else:
-        with st.container(border=True):
+        with st.container():
             try:
                 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                 best_model = 'gemini-1.5-flash'
@@ -668,49 +667,57 @@ elif menu == "💬 Gemini 매장 비서 (챗봇)":
                             if 'flash' in m.name: best_model = m.name; break
                             elif 'pro' in m.name: best_model = m.name
                 except: pass
-                model = genai.GenerativeModel(best_model)
-                st.success(f"✅ 구글 서버 자동 연결 성공! (작동 모델: `{best_model}`)")
                 
-                # ⭐ [핵심 추가] 프롬프트에 주입할 현재 매장 전체 트래픽/체류시간 요약 생성
-                store_context = "현재 매장 트래픽 데이터가 없습니다."
+                # --- [핵심 추가] 현재 데이터 상태를 요약하여 컨텍스트 문자열 생성 ---
+                system_context = (
+                    "당신은 리테일 매장의 공간 분석 및 운영 어드바이저입니다.\n"
+                    "다음은 현재 대시보드에서 분석 중인 실시간 데이터 맥락입니다:\n"
+                )
+                
+                # 1. 트래픽 요약 데이터 주입
                 if df_all is not None and not df_all.empty:
-                    # 피드백 반영: 전체 트래픽 및 평균 체류시간 위주로 데이터 압축
-                    total_users = df_all['real_user_id'].nunique()
-                    top_3_zones = df_all['zone'].value_counts().head(3).index.tolist()
-                    avg_stay_min = df_all['stay_sec'].mean() / 60 if 'stay_sec' in df_all.columns else 0
+                    total_visitors = df_all['real_user_id'].nunique()
+                    top_zone = df_all['zone'].value_counts().index[0]
+                    total_stay_hrs = df_all['stay_sec'].sum() / 3600 if 'stay_sec' in df_all.columns else 0
                     
-                    store_context = f"""
-                    [백그라운드 정보: 현재 마트 데이터 요약]
-                    - 총 누적 방문 고객: {total_users:,}명
-                    - 가장 붐비는 코너 Top 3: {', '.join(top_3_zones)}
-                    - 고객 평균 체류 시간: 약 {avg_stay_min:.1f}분
-                    """
-
+                    system_context += f"- 누적 방문객 수: {total_visitors:,.0f}명\n"
+                    system_context += f"- 총 체류 시간: {total_stay_hrs:,.0f}시간\n"
+                    system_context += f"- 가장 인기 있는 밀집 구역(Top Zone): {top_zone}\n"
+                    system_context += f"- 매장 내 관리 구역 목록: {', '.join(list(ZONES.keys()))}\n"
+                
+                # 2. OS 비율 데이터 주입
+                if df_os is not None and not df_os.empty:
+                    android_count = df_os[df_os['os'] == 'Android']['count'].sum()
+                    iphone_count = df_os[df_os['os'] == 'iPhone']['count'].sum()
+                    system_context += f"- 고객 단말기 OS 비율: Android {android_count}대, iPhone {iphone_count}대\n"
+                
+                system_context += (
+                    "\n위 데이터를 바탕으로 매장 레이아웃 최적화, 수요 예측, 동선 개선 등에 대한 질문에 "
+                    "구체적이고 전문적인 솔루션을 제공해 주세요."
+                )
+                
+                # 모델 초기화 시 시스템 프롬프트(system_instruction) 주입
+                model = genai.GenerativeModel(
+                    model_name=best_model,
+                    system_instruction=system_context
+                )
+                # -----------------------------------------------------------
+                
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
                 for msg in st.session_state.chat_history:
                     with st.chat_message(msg["role"]): st.markdown(msg["content"])
                     
-                if prompt := st.chat_input("질문을 입력하세요... (예: 현재 가장 붐비는 코너를 바탕으로 마케팅 전략 세워줘)"):
+                if prompt := st.chat_input("Ask advisor..."):
                     st.session_state.chat_history.append({"role": "user", "content": prompt})
                     with st.chat_message("user"): st.markdown(prompt)
-                    
                     with st.chat_message("assistant"):
-                        with st.spinner("데이터 분석 및 답변 생성 중..."):
-                            # ⭐ [핵심 수정] 사용자 질문 앞에 백그라운드 데이터를 몰래 끼워넣음
-                            final_prompt = f"""
-                            너는 대형 마트의 유능한 점장 비서이자 데이터 분석가야. 
-                            다음 백그라운드 데이터를 기반으로 질문에 실무적이고 인사이트 있는 답변을 해줘.
-                            
-                            {store_context}
-                            
-                            점장님의 질문: {prompt}
-                            """
-                            
-                            response = model.generate_content(final_prompt)
+                        with st.spinner("데이터 맥락을 해석하여 답변을 생성 중입니다..."):
+                            # 이제 모델은 내부적으로 system_context를 인지한 상태로 답변합니다.
+                            response = model.generate_content(prompt)
                             st.markdown(response.text)
                             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            except KeyError: 
-                st.error("비밀 금고에 API 키가 없습니다!")
+                            
+            except KeyError: st.error("API Key not found in st.secrets.")
 
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
