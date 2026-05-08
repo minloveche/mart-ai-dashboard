@@ -18,11 +18,19 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as PathEffects
 
+# --- [AI 및 ML 라이브러리 체크] ---
 try:
     import google.generativeai as genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
+
+try:
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import StandardScaler
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
 
 # --- [1. 기본 설정 및 다크모드 폰트] ---
 st.set_page_config(page_title="Retail Spatial Analytics", layout="wide")
@@ -158,7 +166,8 @@ def format_date_option(d):
 
 st.sidebar.title("Spatial Analytics")
 
-main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Heatmap Analysis", "AI Operations", "Sensor Map"])
+# ✨ [신규 추가] Customer Persona 메뉴가 두 번째에 추가되었습니다.
+main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
@@ -351,9 +360,7 @@ if menu == "Traffic Summary":
                             if focus_zone == "전체 보기":
                                 top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
                             else:
-                                # 배경으로 깔아둘 전체 Top N
                                 global_top = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
-                                # 집중 분석할 구역과 연결된 동선 Top N 추가
                                 focus_flows = flow_counts[(flow_counts['zone'] == focus_zone) | (flow_counts['next_zone'] == focus_zone)].sort_values('weight', ascending=False).head(flow_limit)
                                 top_flows = pd.concat([global_top, focus_flows]).drop_duplicates(subset=['zone', 'next_zone'])
                             
@@ -369,7 +376,6 @@ if menu == "Traffic Summary":
                             fig_flow.patch.set_facecolor('#0F172A')
                             ax_flow.set_facecolor('#0F172A')
                             
-                            # 2. 배경 도면 밝기 업그레이드 (alpha 0.85 적용)
                             img_path = 'map_image.jpg'
                             try:
                                 img = mpimg.imread(img_path)
@@ -377,7 +383,6 @@ if menu == "Traffic Summary":
                             except: 
                                 ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
                             
-                            # 3. 색상 및 크기 동적 할당
                             max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
                             
@@ -387,7 +392,6 @@ if menu == "Traffic Summary":
                             
                             node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 2000 + 200 for node in G.nodes()]
                             
-                            # 포커스 여부에 따른 엣지 투명도/색상 처리
                             rgba_colors = []
                             for u, v in G.edges():
                                 weight = G[u][v]['weight']
@@ -395,29 +399,27 @@ if menu == "Traffic Summary":
                                 
                                 if focus_zone != "전체 보기":
                                     if u == focus_zone or v == focus_zone:
-                                        rgba[3] = 0.95 # 포커스 구역 연결선은 뚜렷하게 발광
+                                        rgba[3] = 0.95 
                                     else:
-                                        rgba = [0.4, 0.4, 0.4, 0.15] # 나머지는 반투명한 회색 그림자 처리
+                                        rgba = [0.4, 0.4, 0.4, 0.15] 
                                 else:
                                     rgba[3] = max(0.2, weight / max_weight)
                                 rgba_colors.append(rgba)
                             
-                            # 포커스 여부에 따른 노드 투명도/색상 처리
                             node_colors = []
                             for node in G.nodes():
                                 if focus_zone != "전체 보기":
                                     if node == focus_zone:
-                                        node_colors.append('#FBBF24') # 선택된 메인 구역은 황금색
+                                        node_colors.append('#FBBF24') 
                                     elif G.has_edge(focus_zone, node) or G.has_edge(node, focus_zone):
-                                        node_colors.append('#0EA5E9') # 연결된 타겟 구역은 파란색
+                                        node_colors.append('#0EA5E9') 
                                     else:
-                                        node_colors.append('#1E293B') # 상관없는 구역은 어두운 배경색
+                                        node_colors.append('#1E293B') 
                                 else:
                                     node_colors.append('#0EA5E9' if zone_popularity.get(node, 0) > (max_pop * 0.3) else '#334155')
 
                             edge_widths = [(G[u][v]['weight'] / max_weight) * 5 + 0.8 for u, v in G.edges()]
                             
-                            # 그리기
                             nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.95)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color=rgba_colors, arrowsize=18, connectionstyle='arc3,rad=0.2')
                             
@@ -546,6 +548,142 @@ if menu == "Traffic Summary":
                                     """, unsafe_allow_html=True)
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
+
+# ✨ [신규 추가] 고객 페르소나 (AI 세그먼테이션) 분석 모듈
+elif menu == "Customer Persona":
+    st.title("Customer Behavior Persona (AI Clustering)")
+
+    if not HAS_SKLEARN:
+        st.error("이 AI 기능을 사용하려면 scikit-learn 머신러닝 라이브러리가 필요합니다. \n\n터미널에서 `pip install scikit-learn`을 실행해 주세요.")
+    elif df_all is not None and 'date' in df_all.columns:
+        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
+        selected_date = st.selectbox("Select Date for Clustering:", ["All Dates (Cumulative)"] + available_dates, format_func=format_date_option)
+
+        if selected_date == "All Dates (Cumulative)":
+            filtered_df = df_all
+        else:
+            filtered_df = df_all[df_all['date'].apply(lambda x: safe_date_match(x, selected_date))]
+
+        if not filtered_df.empty:
+            with st.spinner("AI가 고객 데이터를 학습하여 3가지 행동 페르소나를 도출하고 있습니다..."):
+                
+                # 1. 고객별 특성 추출 (Feature Engineering)
+                if 'stay_sec' not in filtered_df.columns:
+                    filtered_df['stay_sec'] = 10 
+
+                user_features = filtered_df.groupby('real_user_id').agg(
+                    total_dwell=('stay_sec', 'sum'),
+                    unique_zones=('zone', 'nunique')
+                ).reset_index()
+
+                user_features['total_dwell_min'] = user_features['total_dwell'] / 60.0
+
+                # 최소 3명 이상의 데이터가 있어야 클러스터링 가능
+                if len(user_features) >= 3:
+                    # 2. K-Means 클러스터링 실행
+                    X = user_features[['total_dwell_min', 'unique_zones']]
+                    scaler = StandardScaler()
+                    X_scaled = scaler.fit_transform(X)
+
+                    kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+                    user_features['cluster'] = kmeans.fit_predict(X_scaled)
+
+                    # 3. 페르소나 의미 자동 부여 (라벨링 로직)
+                    cluster_centers = user_features.groupby('cluster').mean()
+                    
+                    # 가장 여러 구역을 다닌 그룹 = 탐색형(대형장보기)
+                    sorted_by_zones = cluster_centers.sort_values('unique_zones', ascending=False).index.tolist()
+                    cluster_explorer = sorted_by_zones[0]
+
+                    remaining = [c for c in [0, 1, 2] if c != cluster_explorer]
+                    
+                    # 남은 두 그룹 중 체류시간이 월등히 긴 그룹 = 직원/정체형
+                    if cluster_centers.loc[remaining[0], 'total_dwell_min'] > cluster_centers.loc[remaining[1], 'total_dwell_min']:
+                        cluster_employee = remaining[0]
+                        cluster_goal = remaining[1]
+                    else:
+                        cluster_employee = remaining[1]
+                        cluster_goal = remaining[0]
+
+                    persona_map = {
+                        cluster_explorer: '🛒 탐색형 (대형장보기)',
+                        cluster_employee: '🕴️ 직원/정체형 (노이즈)',
+                        cluster_goal: '🏃‍♂️ 목적형 (체리피커)'
+                    }
+                    color_map = {
+                        '🛒 탐색형 (대형장보기)': '#10B981', 
+                        '🕴️ 직원/정체형 (노이즈)': '#F43F5E', 
+                        '🏃‍♂️ 목적형 (체리피커)': '#38BDF8'  
+                    }
+
+                    user_features['Persona'] = user_features['cluster'].map(persona_map)
+
+                    # 4. 결과 지표 표시
+                    total_customers = len(user_features)
+                    counts = user_features['Persona'].value_counts()
+
+                    st.markdown("#### 👥 AI Customer Segmentation Results", unsafe_allow_html=True)
+
+                    cols = st.columns(3)
+                    metric_data = [
+                        ('🛒 탐색형 (대형장보기)', '매장 곳곳을 돌며 장시간 탐색 (대량 구매 유력)'),
+                        ('🏃‍♂️ 목적형 (체리피커)', '살 물건이 있는 특정 구역만 빠르게 방문'),
+                        ('🕴️ 직원/정체형 (노이즈)', '한두 구역에만 비정상적으로 오랜 시간 체류')
+                    ]
+
+                    for i, (p_name, p_desc) in enumerate(metric_data):
+                        p_count = counts.get(p_name, 0)
+                        p_pct = (p_count / total_customers) * 100 if total_customers > 0 else 0
+                        with cols[i]:
+                            st.markdown(f"""
+                            <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-top: 4px solid {color_map[p_name]}; text-align: center;">
+                                <h3 style="color: #F8FAFC; margin-bottom: 5px; font-size: 18px;">{p_name}</h3>
+                                <p style="color: #94A3B8; font-size: 13px; margin-bottom: 15px;">{p_desc}</p>
+                                <h2 style="color: {color_map[p_name]}; margin: 0; font-size: 32px;">{p_pct:.1f}%</h2>
+                                <p style="color: #CBD5E1; font-size: 14px; margin-top: 5px;">{p_count:,} 명</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    # 5. 산점도 분포 시각화 (Altair)
+                    st.markdown("<br>#### 📊 Persona Distribution Map", unsafe_allow_html=True)
+
+                    scatter = alt.Chart(user_features).mark_circle(size=80, opacity=0.7).encode(
+                        x=alt.X('unique_zones:Q', title='방문한 고유 구역 수 (다양성)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        y=alt.Y('total_dwell_min:Q', title='총 체류 시간 (분)', scale=alt.Scale(type='symlog'), axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        color=alt.Color('Persona:N', scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values())), legend=alt.Legend(title="고객 페르소나 유형", orient='top')),
+                        tooltip=[
+                            alt.Tooltip('real_user_id:N', title='고객 ID'),
+                            alt.Tooltip('Persona:N', title='분류'),
+                            alt.Tooltip('unique_zones:Q', title='방문 구역 수'),
+                            alt.Tooltip('total_dwell_min:Q', title='체류 시간(분)', format='.1f')
+                        ]
+                    ).properties(height=450)
+
+                    st.altair_chart(scatter, use_container_width=True)
+
+                    # 6. 비즈니스 액션 제안 (Dynamic Insights)
+                    st.markdown("<br>#### 💡 Actionable Insights", unsafe_allow_html=True)
+
+                    explorer_pct = (counts.get('🛒 탐색형 (대형장보기)', 0) / total_customers) * 100
+                    goal_pct = (counts.get('🏃‍♂️ 목적형 (체리피커)', 0) / total_customers) * 100
+
+                    if explorer_pct > 30:
+                        insight_text = "현재 선택하신 날짜에는 **'탐색형 고객(대량 구매 유력)'의 비율이 상당히 높습니다.** 고객들이 매장 전체를 돌아다니며 쇼핑을 즐기고 있으므로, 동선 중간중간에 '연관 구매(Cross-selling)'를 유도하는 팝업 매대나 시식 코너를 적극적으로 배치하면 객단가를 극대화할 수 있습니다."
+                    elif goal_pct > 50:
+                        insight_text = "현재 **'목적형 고객(체리피커)'이 과반수 이상을 차지하고 있습니다.** 고객들이 목적지만 딱 찍고 빠르게 이탈하고 있습니다. 이들의 체류 시간을 늘리기 위해 입구에서 메인 동선으로 이어지는 길목에 강력한 미끼 상품(Loss Leader)이나 강렬한 시각적 자극을 주는 특별 기획 행사장을 배치할 필요가 있습니다."
+                    else:
+                        insight_text = "현재 탐색형과 목적형 고객이 비교적 고르게 분포되어 있습니다. 매장 깊숙한 주동선에는 탐색형 고객을 위한 마진율 높은 브랜딩 행사를, 계산대 인근이나 출입구 쪽에는 목적형 고객이 마지막에 충동구매할 수 있는 스낵/음료류를 전진 배치하는 투트랙(Two-track) 레이아웃 전략을 권장합니다."
+
+                    st.markdown(f"""
+                    <div style="background-color: #0F172A; padding: 20px; border-radius: 8px; border-left: 4px solid #F59E0B; color: #F8FAFC;">
+                        {insight_text}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                else:
+                    st.info("클러스터링을 수행하기에 고객 데이터가 부족합니다.")
+        else:
+            st.info("선택한 조건에 해당하는 데이터가 없습니다.")
 
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
@@ -787,8 +925,7 @@ elif menu == "Layout Simulator":
                                 else:
                                     raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                                 
-                                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
-                                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
+                                ai_model_name = 'gemini-pro'
                                 try:
                                     for m in genai.list_models():
                                         if 'generateContent' in m.supported_generation_methods:
@@ -841,8 +978,7 @@ elif menu == "LLM Assistant":
                 else:
                     raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                 
-                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
-                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
+                ai_model_name = 'gemini-pro'
                 try:
                     for m in genai.list_models():
                         if 'generateContent' in m.supported_generation_methods:
