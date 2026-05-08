@@ -489,12 +489,17 @@ if menu == "Traffic Summary":
                         plot_data_multi['Trend'] = plot_data_multi.groupby('date')['visitors'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
                         
                         hover = alt.selection_point(fields=['Time'], nearest=True, on='mouseover', empty=False)
+                        
+                        # 💡 [신규] 범례 클릭 시 하이라이트 기능 추가 (Shift+클릭으로 다중 선택 가능)
+                        legend_click = alt.selection_point(fields=['Label'], bind='legend')
 
                         base = alt.Chart(plot_data_multi).encode(
                             x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                             y=alt.Y('Trend:Q', title='Trend (Avg Visitors)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            color=alt.Color('Label:N', title='Legend', scale=alt.Scale(scheme='set2'))
-                        )
+                            color=alt.Color('Label:N', title='Legend', scale=alt.Scale(scheme='set2')),
+                            opacity=alt.condition(legend_click, alt.value(1.0), alt.value(0.15)) # 선택되지 않은 선은 흐리게 처리
+                        ).add_params(legend_click)
+                        
                         line = base.mark_line(interpolate='monotone', strokeWidth=3.5)
 
                         selectors = alt.Chart(plot_data_multi).mark_point().encode(
@@ -517,6 +522,7 @@ if menu == "Traffic Summary":
 
                         chart_multi = (line + selectors + rule + points + text).properties(height=400)
                         st.altair_chart(chart_multi, use_container_width=True)
+                        st.caption("💡 **[인터랙티브 기능]** 우측 범례(Legend)에서 특정 날짜를 클릭하면 해당 선만 밝게 강조됩니다. (`Shift + 클릭`으로 2개 이상의 날짜를 동시에 켤 수 있습니다.)")
                         
                         st.markdown("#### Performance Summary")
                         cols = st.columns(len(selected_multi_dates))
@@ -699,7 +705,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 + 두괄식 AI 브리핑 + Delta 온도차 카드 + 신뢰구간 곡선 반영
+# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 + 두괄식 브리핑 + 온도차 카드 + 신뢰구간 곡선 총집합
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
@@ -720,7 +726,6 @@ elif menu == "Demand Forecast":
                 ai_model = joblib.load("ai_forecaster.pkl")
                 features = joblib.load("ai_features.pkl")
                 
-                # 🚨 [핵심] 이제 4개 구역이 아니라, AI가 학습한 모든 구역 이름을 불러옵니다!
                 target_zones = [f.replace('zone_', '') for f in features if f.startswith('zone_')]
                 if not target_zones: 
                     target_zones = list(ZONES.keys())
@@ -776,18 +781,15 @@ elif menu == "Demand Forecast":
                             if df_ext['Importance'].sum() > 0: 
                                 df_ext['Importance'] = df_ext['Importance'] / df_ext['Importance'].sum()
                             
-                            # 구역은 가장 파워가 강한 상위 10개만 보여줍니다.
                             df_zone = df_zone[df_zone['Importance'] > 0].sort_values('Importance', ascending=False).head(10)
                             df_ext = df_ext[df_ext['Importance'] > 0].sort_values('Importance', ascending=False).head(5)
                             
-                            # 차트 1: 구역별 체급 파워 (초록색)
                             chart_zone = alt.Chart(df_zone).mark_bar(color='#10B981', cornerRadiusEnd=4).encode(
                                 x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='')),
                                 y=alt.Y('Feature:N', sort='-x', title='구역별 기본 체급 (Top 10)'),
                                 tooltip=['Feature', alt.Tooltip('Importance:Q', format='.1%')]
                             ).properties(height=200)
                             
-                            # 차트 2: 외부 환경 요인 파워 (주황색)
                             chart_ext = alt.Chart(df_ext).mark_bar(color='#F59E0B', cornerRadiusEnd=4).encode(
                                 x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='독립 기여도 (100% 환산)')),
                                 y=alt.Y('Feature:N', sort='-x', title='외부 환경 요인'),
@@ -809,13 +811,12 @@ elif menu == "Demand Forecast":
                             st.dataframe(combined_input.T.rename(columns={0: 'Value'}), height=380)
                             st.caption(f"💡 총 {len(target_zones)}개 구역의 조건과 환경 정보가 0과 1의 Matrix로 변환되어 주입되었습니다.")
 
-                # 기존 트래픽 곡선 그리기 로직 (신뢰구간 & 비교군 점선 추가 패치)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
                     total_predicted = sum(predictions.values()) 
                     
-                    # 💡 1. 평소(기준점) 트래픽 총합 계산 (수요일/맑음 기준)
+                    # 기준 트래픽(Baseline) 산출 (수요일/맑음 기준)
                     base_total_predicted = 0
                     for zone in target_zones:
                         base_input = pd.DataFrame(columns=features)
@@ -826,14 +827,13 @@ elif menu == "Demand Forecast":
                             base_input[f"zone_{zone}"] = 1
                         base_total_predicted += ai_model.predict(base_input)[0]
 
-                    # 💡 2. 데이터프레임 구성 (오늘 예측, 평소 예측, 상한선, 하한선)
+                    # 예측 곡선 및 신뢰구간 밴드 데이터프레임 구성
                     pred_curve = pd.DataFrame({
                         'Time_Str': hourly_ratio.index,
                         'Expected Visitors': hourly_ratio.values * total_predicted,
                         'Baseline': hourly_ratio.values * base_total_predicted
                     })
                     
-                    # 신뢰구간 (오차범위 ±15% 설정)
                     pred_curve['Upper Bound'] = pred_curve['Expected Visitors'] * 1.15
                     pred_curve['Lower Bound'] = pred_curve['Expected Visitors'] * 0.85
                     
@@ -842,7 +842,6 @@ elif menu == "Demand Forecast":
                     
                     st.markdown("<br>#### Forecasted Traffic Curve (신뢰 구간 및 평소 대비 비교)", unsafe_allow_html=True)
                     
-                    # 1. 신뢰 구간 밴드 (연한 보라색 배경)
                     band_chart = alt.Chart(pred_curve).mark_area(
                         interpolate='monotone', color='#8B5CF6', opacity=0.15
                     ).encode(
@@ -851,7 +850,6 @@ elif menu == "Demand Forecast":
                         y2='Upper Bound:Q'
                     )
                     
-                    # 2. 평소(기준점) 트래픽 곡선 (회색 점선)
                     baseline_chart = alt.Chart(pred_curve).mark_line(
                         interpolate='monotone', color='#94A3B8', strokeWidth=2, strokeDash=[5, 5]
                     ).encode(
@@ -859,7 +857,6 @@ elif menu == "Demand Forecast":
                         y='Baseline:Q'
                     )
                     
-                    # 3. 오늘 예측 트래픽 곡선 (진한 보라색 실선)
                     main_line = alt.Chart(pred_curve).mark_line(
                         interpolate='monotone', color='#A78BFA', strokeWidth=3.5
                     ).encode(
@@ -868,7 +865,6 @@ elif menu == "Demand Forecast":
                         tooltip=[alt.Tooltip('Time:T', format='%H:%M', title='시간'), alt.Tooltip('Expected Visitors:Q', format=',.0f', title='오늘 예상 (명)'), alt.Tooltip('Baseline:Q', format=',.0f', title='평소 평균 (명)')]
                     )
                     
-                    # 차트 합치기
                     final_chart = (band_chart + baseline_chart + main_line).properties(height=300)
                     st.altair_chart(final_chart, use_container_width=True)
                     
@@ -878,10 +874,8 @@ elif menu == "Demand Forecast":
 
                 st.markdown("<hr style='margin: 40px 0 20px 0; border-color: #334155;'>", unsafe_allow_html=True)
                 
-                # 💡 [적용 완료] 아이디어 4: 두괄식 화법 (AI 종합 브리핑)
                 st.markdown("#### 🗣️ AI 매니저 종합 운영 브리핑")
                 
-                # 브리핑 조건문 자동 생성
                 briefing_elements = []
                 if "Rainy" in future_weather: briefing_elements.append("**[비 오는 날씨]**")
                 elif "Cloudy" in future_weather: briefing_elements.append("**[흐린 날씨]**")
@@ -905,12 +899,10 @@ elif menu == "Demand Forecast":
 
                 st.info(f"{briefing_intro}\n\n👉 {briefing_detail}")
                 
-                # 💡 [적용 완료] 아이디어 2: 온도차 (Delta) 분석 카드
                 st.markdown("<br>#### 🔥 오늘의 집중 관리 구역 (평소 대비 트래픽 변화량)", unsafe_allow_html=True)
                 
                 insight_data = []
                 for zone, traffic in predictions.items():
-                    # AI에게 '평범한 평일 맑은 날'의 베이스라인(기준점)을 계산하도록 지시
                     base_input = pd.DataFrame(columns=features)
                     base_input.loc[0] = 0
                     base_input['Weather_Clean_Sunny'] = 1
@@ -929,7 +921,6 @@ elif menu == "Demand Forecast":
                         'Delta_Raw': delta
                     })
                 
-                # '평소 대비 변화율(절댓값)'이 가장 큰 순서대로 정렬 (가장 다이나믹하게 변한 핵심 구역 6개 추출)
                 insight_data.sort(key=lambda x: abs(x['Delta_Pct']), reverse=True)
                 
                 col_i1, col_i2 = st.columns(2)
@@ -939,21 +930,20 @@ elif menu == "Demand Forecast":
                     pct = data['Delta_Pct']
                     raw = data['Delta_Raw']
                     
-                    # 변화율에 따른 색상 및 지침 자동 매핑
                     if pct > 5:
-                        box_color = "rgba(16, 185, 129, 0.1)" # 초록색 틴트
+                        box_color = "rgba(16, 185, 129, 0.1)" 
                         border_color = "#10B981"
                         icon = "🔺"
                         pct_color = "#10B981"
                         action = "수요 급증! 결품 방지를 위해 재고 1.5배 보충 및 매대 전진 배치 요망"
                     elif pct < -5:
-                        box_color = "rgba(244, 63, 94, 0.1)" # 빨간색 틴트
+                        box_color = "rgba(244, 63, 94, 0.1)" 
                         border_color = "#F43F5E"
                         icon = "🔻"
                         pct_color = "#F43F5E"
                         action = "트래픽 감소 예상. 해당 구역 전담 인력을 타 바쁜 구역으로 재배치 고려"
                     else:
-                        box_color = "rgba(148, 163, 184, 0.05)" # 회색 틴트
+                        box_color = "rgba(148, 163, 184, 0.05)" 
                         border_color = "#475569"
                         icon = "➖"
                         pct_color = "#94A3B8"
@@ -969,7 +959,6 @@ elif menu == "Demand Forecast":
                         <p style="margin: 0; font-size: 13px; color: #CBD5E1;">💡 {action}</p>
                     </div>
                     """
-                    # 지그재그로 예쁘게 카드 배치
                     if idx % 2 == 0:
                         with col_i1: st.markdown(card_html, unsafe_allow_html=True)
                     else:
