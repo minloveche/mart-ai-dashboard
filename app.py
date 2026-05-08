@@ -323,17 +323,19 @@ if menu == "Traffic Summary":
                             - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
                             """)
                 
-                # 고객 동선 맵 (Advanced Ver)
+                # --- [고객 동선 맵 (Advanced Ver)] ---
                 st.markdown("<br>#### 🌊 Advanced Customer Flow Map", unsafe_allow_html=True)
                 
-                # [개선 1] 핵심 동선만 골라보는 UI 슬라이더 추가
-                col_map_1, col_map_2 = st.columns([1, 2])
+                # UI 필터 컨트롤
+                col_map_1, col_map_2, col_map_3 = st.columns([1, 1, 1.5])
                 with col_map_1:
                     flow_limit = st.slider("보여줄 핵심 동선 개수 (Top N)", min_value=5, max_value=100, value=25, step=5)
                 with col_map_2:
-                    st.info("💡 선이 굵고 밝은 노란색일수록 많은 고객이 이동한 '주동선(Main Flow)'입니다.")
+                    focus_zone = st.selectbox("🎯 집중 분석 구역 선택", ["전체 보기"] + list(ZONES.keys()))
+                with col_map_3:
+                    st.info("💡 구역을 선택하면 해당 구역의 동선만 타오르듯 강조되며, 배경 도면이 더욱 밝게 표시됩니다.")
 
-                with st.spinner("Rendering advanced flow map..."):
+                with st.spinner("Rendering interactive flow map..."):
                     flow_df = filtered_df.copy()
                     if 'next_zone' not in flow_df.columns and 'enter_time' in flow_df.columns:
                         flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
@@ -345,8 +347,16 @@ if menu == "Traffic Summary":
                         flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                         
                         if not flow_counts.empty:
-                            # 필터 반영
-                            top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
+                            # 1. 포커스 필터링 로직
+                            if focus_zone == "전체 보기":
+                                top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
+                            else:
+                                # 배경으로 깔아둘 전체 Top N
+                                global_top = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
+                                # 집중 분석할 구역과 연결된 동선 Top N 추가
+                                focus_flows = flow_counts[(flow_counts['zone'] == focus_zone) | (flow_counts['next_zone'] == focus_zone)].sort_values('weight', ascending=False).head(flow_limit)
+                                top_flows = pd.concat([global_top, focus_flows]).drop_duplicates(subset=['zone', 'next_zone'])
+                            
                             zone_popularity = filtered_df['zone'].value_counts().to_dict()
                             
                             G = nx.DiGraph()
@@ -358,48 +368,61 @@ if menu == "Traffic Summary":
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
                             fig_flow.patch.set_facecolor('#0F172A')
                             ax_flow.set_facecolor('#0F172A')
+                            
+                            # 2. 배경 도면 밝기 업그레이드 (alpha 0.85 적용)
                             img_path = 'map_image.jpg'
                             try:
                                 img = mpimg.imread(img_path)
-                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.35)
+                                ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.85)
                             except: 
                                 ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
                             
-                            # --- [전문가급 시각화 업그레이드] ---
+                            # 3. 색상 및 크기 동적 할당
                             max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
                             
-                            # 1. 노드(구역) 스타일링: 세련된 다크 테마
-                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 2000 + 200 for node in G.nodes()]
-                            # 트래픽 상위 30%는 돋보이는 시안(Cyan) 색상, 나머지는 차분한 슬레이트(Slate) 색상
-                            node_colors = ['#0EA5E9' if zone_popularity.get(node, 0) > (max_pop * 0.3) else '#334155' for node in G.nodes()]
-                            
-                            # 2. 엣지(동선) 스타일링: B2B 엔터프라이즈 커스텀 그라데이션
-                            # 딥블루 -> 스카이블루 -> 앰버(황색) -> 코랄레드
                             custom_colors = ["#1E293B", "#38BDF8", "#F59E0B", "#F43F5E"]
                             cmap_custom = mcolors.LinearSegmentedColormap.from_list("custom_flow", custom_colors)
                             norm = mcolors.Normalize(vmin=0, vmax=max_weight)
                             
-                            edge_widths = [(G[u][v]['weight'] / max_weight) * 5 + 0.8 for u, v in G.edges()]
+                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 2000 + 200 for node in G.nodes()]
                             
-                            # 색상과 투명도(Alpha)를 트래픽 비중에 따라 개별 계산 (메인 동선만 뚜렷하게)
+                            # 포커스 여부에 따른 엣지 투명도/색상 처리
                             rgba_colors = []
                             for u, v in G.edges():
                                 weight = G[u][v]['weight']
-                                rgba = list(cmap_custom(norm(weight))) # [R, G, B, A] 추출
-                                rgba[3] = max(0.2, weight / max_weight) # 트래픽이 적을수록 더 투명해짐 (최소 투명도 0.2)
+                                rgba = list(cmap_custom(norm(weight))) 
+                                
+                                if focus_zone != "전체 보기":
+                                    if u == focus_zone or v == focus_zone:
+                                        rgba[3] = 0.95 # 포커스 구역 연결선은 뚜렷하게 발광
+                                    else:
+                                        rgba = [0.4, 0.4, 0.4, 0.15] # 나머지는 반투명한 회색 그림자 처리
+                                else:
+                                    rgba[3] = max(0.2, weight / max_weight)
                                 rgba_colors.append(rgba)
                             
-                            # 노드 그리기
-                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.95)
+                            # 포커스 여부에 따른 노드 투명도/색상 처리
+                            node_colors = []
+                            for node in G.nodes():
+                                if focus_zone != "전체 보기":
+                                    if node == focus_zone:
+                                        node_colors.append('#FBBF24') # 선택된 메인 구역은 황금색
+                                    elif G.has_edge(focus_zone, node) or G.has_edge(node, focus_zone):
+                                        node_colors.append('#0EA5E9') # 연결된 타겟 구역은 파란색
+                                    else:
+                                        node_colors.append('#1E293B') # 상관없는 구역은 어두운 배경색
+                                else:
+                                    node_colors.append('#0EA5E9' if zone_popularity.get(node, 0) > (max_pop * 0.3) else '#334155')
+
+                            edge_widths = [(G[u][v]['weight'] / max_weight) * 5 + 0.8 for u, v in G.edges()]
                             
-                            # 엣지 그리기 (커스텀 투명도 적용)
+                            # 그리기
+                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.95)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color=rgba_colors, arrowsize=18, connectionstyle='arc3,rad=0.2')
                             
-                            # 3. 라벨 스타일링: 투박한 박스 제거 및 다크 글로우(Dark Glow) 외곽선 적용
                             labels = nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=10, font_weight='bold', font_color='#F8FAFC')
                             
-                            # 글씨가 도면과 겹쳐도 잘 보이도록 글씨 테두리에만 어두운 효과 부여
                             for _, text_obj in labels.items():
                                 text_obj.set_path_effects([PathEffects.withStroke(linewidth=3, foreground='#020617')])
                             
@@ -436,7 +459,7 @@ if menu == "Traffic Summary":
                         with st.expander("💡 Tip"):
                             st.markdown("""
                             - **색상의 의미:** 색상이 진한 보라색일수록 두 구역을 함께 방문한 고객이 많다는 뜻입니다.
-                            - **인사이트 도출:** 비 오는 날짜를 선택했을 때 특정 상품군(예: 라면-주류)의 색상이 짙어진다면, 해당 조합의 묶음 할인을 기획하거나 매대를 가깝게 배치하여 크로스셀링(Cross-selling)을 유도할 수 시도할 수 있습니다.
+                            - **인사이트 도출:** 비 오는 날짜를 선택했을 때 특정 상품군(예: 라면-주류)의 색상이 짙어진다면, 해당 조합의 묶음 할인을 기획하거나 매대를 가깝게 배치하여 크로스셀링(Cross-selling)을 유도할 수 있습니다.
                             - **대각선 빈칸:** 같은 구역(예: 라면-라면)이 만나는 곳은 데이터 방해를 막기 위해 의도적으로 제외(0) 처리되었습니다.
                             """)
                     else:
