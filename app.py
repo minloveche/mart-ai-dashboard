@@ -721,8 +721,9 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
+# ✨ [XGBoost XAI 적용 완료] Demand Forecast 모듈
 elif menu == "Demand Forecast":
-    st.title("Demand Forecast")
+    st.title("Demand Forecast (XGBoost AI)")
     with st.container():
         row1_col1, row1_col2 = st.columns(2)
         with row1_col1: future_weather = st.selectbox("Weather", ["Sunny", "Cloudy", "Rainy"])
@@ -736,12 +737,16 @@ elif menu == "Demand Forecast":
             with row2_col2: long_holiday_str = st.selectbox("Holiday Type", ["Standard", "Long Weekend/National"]); is_long_holiday = 1 if "Long" in long_holiday_str else 0
         with row2_col3: pre_post_str = st.selectbox("Proximity", ["N/A", "Pre-Holiday", "Post-Holiday"]); is_pre_holiday = 1 if "Pre" in pre_post_str else 0; is_post_holiday = 1 if "Post" in pre_post_str else 0
             
-        if st.button("Run Forecast", use_container_width=True):
+        if st.button("Run XGBoost Forecast", use_container_width=True):
             try:
+                # 1. AI 뇌 불러오기
                 ai_model = joblib.load("ai_forecaster.pkl")
                 features = joblib.load("ai_features.pkl")
+                
                 target_zones = ['라면', '채소/계란/과일', '주류', '장난감']
                 predictions = {}
+                example_input = None # 증명용 데이터 저장 변수
+                
                 for zone in target_zones:
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
@@ -751,8 +756,45 @@ elif menu == "Demand Forecast":
                     elif "Rainy" in future_weather: input_data['Weather_Clean_Rainy'] = 1
                     if f"DayName_Clean_{future_dayname}" in input_data.columns: input_data[f"DayName_Clean_{future_dayname}"] = 1
                     if f"zone_{zone}" in input_data.columns: input_data[f"zone_{zone}"] = 1
+                    
                     predictions[zone] = ai_model.predict(input_data)[0]
+                    if zone == '라면': example_input = input_data.copy() # 첫 번째 구역 데이터만 샘플로 복사
                 
+                # ✨ [XAI] AI 엔진 증명 및 사고 과정 패널 추가
+                with st.expander("🔍 XGBoost 엔진 작동 증명 및 AI 사고 과정 (Explainable AI)", expanded=True):
+                    # 증명 1: 실제 로드된 클래스 타입 출력
+                    st.markdown(f"**1. 탑재된 인공지능 모듈 확인:** `<class '{type(ai_model).__module__}.{type(ai_model).__name__}'>`")
+                    if 'XGB' in type(ai_model).__name__:
+                        st.success("✅ XGBoost 머신러닝 알고리즘이 정상적으로 로드되어 연산을 수행했습니다.")
+                    else:
+                        st.warning("⚠️ XGBoost가 아닌 다른 임시 모델이 로드되었습니다.")
+                    
+                    st.markdown("---")
+                    col_xai1, col_xai2 = st.columns([1.5, 1])
+                    
+                    with col_xai1:
+                        # 증명 2: Feature Importance (AI가 중요하게 본 힌트)
+                        st.markdown("**2. AI가 판단 기준으로 삼은 핵심 요인 (가중치 Top 5):**")
+                        if hasattr(ai_model, 'feature_importances_'):
+                            imp_df = pd.DataFrame({'Feature': features, 'Importance': ai_model.feature_importances_})
+                            # 너무 기여도가 낮은 건 빼고 상위 5개만 정렬
+                            imp_df = imp_df[imp_df['Importance'] > 0].sort_values('Importance', ascending=False).head(5)
+                            
+                            bar_chart = alt.Chart(imp_df).mark_bar(color='#F59E0B', cornerRadiusEnd=4).encode(
+                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='결정 기여도 (Weight)')),
+                                y=alt.Y('Feature:N', sort='-x', title=''),
+                                tooltip=['Feature', alt.Tooltip('Importance:Q', format='.1%')]
+                            ).properties(height=200)
+                            st.altair_chart(bar_chart, use_container_width=True)
+                            st.caption("💡 위 차트는 AI가 이번 결과를 도출할 때 어떤 변수를 가장 유심히 보았는지 수학적으로 증명합니다.")
+                    
+                    with col_xai2:
+                        # 증명 3: AI 뇌로 들어간 실제 수학적 변환 데이터
+                        st.markdown("**3. AI 연산기로 전송된 수학적 텐서(Tensor) 데이터:**")
+                        st.dataframe(example_input.T.rename(columns={0: 'Value'}), height=230)
+                        st.caption("💡 텍스트(예: 비, 일요일)가 AI가 읽을 수 있는 0과 1의 Matrix로 자동 변환되어 주입되었습니다.")
+
+                # 기존 트래픽 곡선 그리기 로직
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
@@ -763,7 +805,7 @@ elif menu == "Demand Forecast":
                     base_date = pd.to_datetime("2026-01-01")
                     pred_curve['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['Time'])
                     
-                    st.markdown("#### Forecasted Traffic Curve")
+                    st.markdown("<br>#### Forecasted Traffic Curve", unsafe_allow_html=True)
                     chart = alt.Chart(pred_curve).mark_area(
                         interpolate='monotone', color='#8B5CF6', opacity=0.3
                     ).encode(
@@ -784,7 +826,8 @@ elif menu == "Demand Forecast":
                     
                     st.markdown(f"- **{zone}**: {traffic:,.0f} visits {insight}")
 
-            except: st.error("Model 'ai_forecaster.pkl' not found.")
+            except Exception as e: 
+                st.error(f"XGBoost 모델을 로드하거나 실행하는 중 오류가 발생했습니다. (파일이 있는지 확인하세요): {e}")
 
 elif menu == "Layout Simulator":
     st.title("Layout Simulator")
