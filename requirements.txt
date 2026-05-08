@@ -10,3 +10,4 @@ pyarrow
 fastparquet
 google-generativeai
 networkx
+xgboost
