@@ -320,9 +320,17 @@ if menu == "Traffic Summary":
                             - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
                             """)
                 
-                # 고객 동선 맵
-                st.markdown("<br>#### Customer Flow Map", unsafe_allow_html=True)
-                with st.spinner("Rendering flow map..."):
+                # 고객 동선 맵 (Advanced Ver)
+                st.markdown("<br>#### 🌊 Advanced Customer Flow Map", unsafe_allow_html=True)
+                
+                # [개선 1] 핵심 동선만 골라보는 UI 슬라이더 추가
+                col_map_1, col_map_2 = st.columns([1, 2])
+                with col_map_1:
+                    flow_limit = st.slider("보여줄 핵심 동선 개수 (Top N)", min_value=5, max_value=100, value=25, step=5)
+                with col_map_2:
+                    st.info("💡 선이 굵고 밝은 노란색일수록 많은 고객이 이동한 '주동선(Main Flow)'입니다.")
+
+                with st.spinner("Rendering advanced flow map..."):
                     flow_df = filtered_df.copy()
                     if 'next_zone' not in flow_df.columns and 'enter_time' in flow_df.columns:
                         flow_df = flow_df.sort_values(['real_user_id', 'enter_time'])
@@ -334,11 +342,14 @@ if menu == "Traffic Summary":
                         flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                         
                         if not flow_counts.empty:
-                            top_flows = flow_counts.sort_values('weight', ascending=False).head(100)
+                            # 필터 반영
+                            top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
                             zone_popularity = filtered_df['zone'].value_counts().to_dict()
+                            
                             G = nx.DiGraph()
                             for zone_name in ZONES.keys(): G.add_node(zone_name)
                             for _, row in top_flows.iterrows(): G.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
+                            
                             pos = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) if node in ZONES else (331, 250) for node in G.nodes()}
                             
                             fig_flow, ax_flow = plt.subplots(figsize=(12, 9), dpi=150)
@@ -348,18 +359,32 @@ if menu == "Traffic Summary":
                             try:
                                 img = mpimg.imread(img_path)
                                 ax_flow.imshow(img, extent=[0, 663, 500, 0], alpha=0.35)
-                            except: ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
+                            except: 
+                                ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
                             
                             max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
-                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 1500 + 100 for node in G.nodes()]
-                            node_colors = ['#FFB347' if zone_popularity.get(node, 0) > 0 else '#B0BEC5' for node in G.nodes()]
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
-                            edge_widths = [(G[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G.edges()]
                             
-                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.85)
-                            nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color='#D84315', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
+                            # [개선 2] 노드 디자인 업그레이드
+                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 2000 + 150 for node in G.nodes()]
+                            node_colors = ['#38BDF8' if zone_popularity.get(node, 0) > (max_pop * 0.4) else '#475569' for node in G.nodes()]
                             
-                            nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.9, edgecolor='#334155', boxstyle='round,pad=0.3'))
+                            import matplotlib.cm as cm
+                            import matplotlib.colors as mcolors
+                            
+                            # [개선 3] 화살표에 플라즈마 컬러맵(볼륨에 따른 그라데이션) 적용
+                            cmap = cm.get_cmap('plasma') 
+                            norm = mcolors.Normalize(vmin=0, vmax=max_weight)
+                            
+                            edge_colors = [cmap(norm(G[u][v]['weight'])) for u, v in G.edges()]
+                            edge_widths = [(G[u][v]['weight'] / max_weight) * 6 + 1.0 for u, v in G.edges()]
+                            
+                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.5, alpha=0.9)
+                            nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color=edge_colors, arrowsize=20, alpha=0.85, connectionstyle='arc3,rad=0.2')
+                            
+                            # 라벨 배경도 세련되게 변경
+                            nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=10, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.85, edgecolor='#38BDF8', boxstyle='round,pad=0.3'))
+                            
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
@@ -650,7 +675,6 @@ elif menu == "Layout Simulator":
                         
                     df_zones_sim['Color'] = df_zones_sim.apply(get_color, axis=1)
                     
-                    # 1단: 숫자로 보는 명확한 성적표 (Impact Analysis)
                     st.markdown("#### Impact Analysis")
                     sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
                     sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
@@ -670,58 +694,6 @@ elif menu == "Layout Simulator":
                     else:
                         metric_col3.metric("Spillover Impact", "N/A", "Distance decay")
                     
-                    # ⭐ 2단: 숫자를 바탕으로 한 AI의 두괄식 브리핑 (하이브리드 배치)
-                    st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
-                    if HAS_GENAI:
-                        with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
-                            try:
-                                if "GEMINI_API_KEY" in st.secrets:
-                                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                else:
-                                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
-                                
-                                ai_model_name = 'gemini-pro' 
-                                try:
-                                    for m in genai.list_models():
-                                        if 'generateContent' in m.supported_generation_methods:
-                                            if 'flash' in m.name.lower():
-                                                ai_model_name = m.name
-                                                break
-                                except: pass
-                                
-                                model = genai.GenerativeModel(ai_model_name)
-                                top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
-                                
-                                ai_prompt = f"""
-                                당신은 데이터 기반 리테일 공간 디자이너입니다.
-                                마트에서 '{swap_a}' 구역과 '{swap_b}' 구역의 위치를 맞바꾸는 시뮬레이션을 실행했습니다.
-                                거리 기반 수학적 시뮬레이션 결과:
-                                - {swap_a} 트래픽 변화: {diff_a:+,}명
-                                - {swap_b} 트래픽 변화: {diff_b:+,}명
-                                - 가장 큰 반사이익(Spillover)을 얻은 주변 구역: {top_gainer_text}
-
-                                이 수학적 데이터를 바탕으로, 실제 고객의 쇼핑 심리와 동선 변화를 탐색하여 다음을 브리핑해주세요:
-                                1. 매대 변경 후 예상되는 고객 동선 흐름의 변화 (왜 이렇게 움직일지 심리적 이유)
-                                2. 이 레이아웃으로 인해 발생할 새로운 연관 구매(Cross-selling) 기회
-                                3. 현장 적용 시 점장님이 주의해야 할 병목현상 또는 리스크
-                                
-                                매우 전문적이고 확신에 찬 어조로, 마크다운 리스트 형식으로 깔끔하고 구체적이게 답변하세요.
-                                """
-                                response = model.generate_content(ai_prompt)
-                                st.markdown(f"""
-                                <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-left: 4px solid #38BDF8; color: #F8FAFC;">
-                                    {response.text}
-                                </div>
-                                """, unsafe_allow_html=True)
-                                
-                            except ValueError as ve:
-                                st.warning(f"서버 보안 설정 필요: {ve}")
-                            except Exception as e:
-                                st.error(f"AI 인사이트를 불러올 수 없습니다. 오류: {e}")
-                    else:
-                        st.info("AI 모듈이 설치되어 있지 않습니다.")
-
-                    # 3단: 근거 확인을 위한 시각화 맵과 바 차트
                     st.markdown("<br>#### Post-Simulation Distribution", unsafe_allow_html=True)
                     bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=3, height=15).encode(
                         x=alt.X('Visits:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
@@ -765,6 +737,57 @@ elif menu == "Layout Simulator":
                     ax_sim.axis('off')
                     st.pyplot(fig_sim, facecolor='#0F172A')
 
+                    st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
+                    if HAS_GENAI:
+                        with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
+                            try:
+                                if "GEMINI_API_KEY" in st.secrets:
+                                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                else:
+                                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
+                                
+                                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
+                                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
+                                try:
+                                    for m in genai.list_models():
+                                        if 'generateContent' in m.supported_generation_methods:
+                                            if 'flash' in m.name.lower():
+                                                ai_model_name = m.name
+                                                break
+                                except: pass
+                                
+                                model = genai.GenerativeModel(ai_model_name)
+                                top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
+                                
+                                ai_prompt = f"""
+                                당신은 데이터 기반 리테일 공간 디자이너입니다.
+                                마트에서 '{swap_a}' 구역과 '{swap_b}' 구역의 위치를 맞바꾸는 시뮬레이션을 실행했습니다.
+                                거리 기반 수학적 시뮬레이션 결과:
+                                - {swap_a} 트래픽 변화: {diff_a:+,}명
+                                - {swap_b} 트래픽 변화: {diff_b:+,}명
+                                - 가장 큰 반사이익(Spillover)을 얻은 주변 구역: {top_gainer_text}
+
+                                이 수학적 데이터를 바탕으로, 실제 고객의 쇼핑 심리와 동선 변화를 탐색하여 다음을 브리핑해주세요:
+                                1. 매대 변경 후 예상되는 고객 동선 흐름의 변화 (왜 이렇게 움직일지 심리적 이유)
+                                2. 이 레이아웃으로 인해 발생할 새로운 연관 구매(Cross-selling) 기회
+                                3. 현장 적용 시 점장님이 주의해야 할 병목현상 또는 리스크
+                                
+                                매우 전문적이고 확신에 찬 어조로, 마크다운 리스트 형식으로 깔끔하고 구체적이게 답변하세요.
+                                """
+                                response = model.generate_content(ai_prompt)
+                                st.markdown(f"""
+                                <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-left: 4px solid #38BDF8; color: #F8FAFC;">
+                                    {response.text}
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                            except ValueError as ve:
+                                st.warning(f"서버 보안 설정 필요: {ve}")
+                            except Exception as e:
+                                st.error(f"AI 인사이트를 불러올 수 없습니다. 오류: {e}")
+                    else:
+                        st.info("AI 모듈이 설치되어 있지 않습니다.")
+
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
     if not HAS_GENAI: 
@@ -777,7 +800,8 @@ elif menu == "LLM Assistant":
                 else:
                     raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
                 
-                ai_model_name = 'gemini-pro' 
+                # ⭐ [오류 해결 패치] 가장 호환성 높은 모델을 자동으로 탐색하여 연결합니다.
+                ai_model_name = 'gemini-pro' # 최후의 보루(기본값)
                 try:
                     for m in genai.list_models():
                         if 'generateContent' in m.supported_generation_methods:
