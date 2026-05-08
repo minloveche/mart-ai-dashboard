@@ -166,6 +166,7 @@ def format_date_option(d):
 
 st.sidebar.title("Spatial Analytics")
 
+# ✨ Customer Persona 메뉴 포함
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -272,8 +273,10 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
+                # Zone Performance (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating True Dwell Times..."):
+                    
                     MIN_STAY_SEC = 30 
                     
                     if 'stay_sec' in filtered_df.columns:
@@ -329,8 +332,10 @@ if menu == "Traffic Summary":
                             - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
                             """)
                 
+                # --- [고객 동선 맵 (Advanced Ver)] ---
                 st.markdown("<br>#### 🌊 Advanced Customer Flow Map", unsafe_allow_html=True)
                 
+                # UI 필터 컨트롤
                 col_map_1, col_map_2, col_map_3 = st.columns([1, 1, 1.5])
                 with col_map_1:
                     flow_limit = st.slider("보여줄 핵심 동선 개수 (Top N)", min_value=5, max_value=100, value=25, step=5)
@@ -351,6 +356,7 @@ if menu == "Traffic Summary":
                         flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                         
                         if not flow_counts.empty:
+                            # 1. 포커스 필터링 로직
                             if focus_zone == "전체 보기":
                                 top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
                             else:
@@ -425,6 +431,7 @@ if menu == "Traffic Summary":
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
+                # 장바구니 연관성 분석
                 st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
                 with st.spinner("Calculating Cross-Visitation..."):
                     unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
@@ -462,6 +469,7 @@ if menu == "Traffic Summary":
 
             else: st.info("No data available for the selected parameters.")
 
+        # 다중 날짜 비교
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -541,6 +549,7 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
+# ✨ [수정 완료] 고객 페르소나 (AI 세그먼테이션) 분석 모듈
 elif menu == "Customer Persona":
     st.title("Customer Behavior Persona (AI Clustering)")
 
@@ -557,6 +566,8 @@ elif menu == "Customer Persona":
 
         if not filtered_df.empty:
             with st.spinner("AI가 고객 데이터를 학습하여 3가지 행동 페르소나를 도출하고 있습니다..."):
+                
+                # 1. 고객별 특성 추출 (Feature Engineering)
                 if 'stay_sec' not in filtered_df.columns:
                     filtered_df['stay_sec'] = 10 
 
@@ -567,7 +578,9 @@ elif menu == "Customer Persona":
 
                 user_features['total_dwell_min'] = user_features['total_dwell'] / 60.0
 
+                # 최소 3명 이상의 데이터가 있어야 클러스터링 가능
                 if len(user_features) >= 3:
+                    # 2. K-Means 클러스터링 실행
                     X = user_features[['total_dwell_min', 'unique_zones']]
                     scaler = StandardScaler()
                     X_scaled = scaler.fit_transform(X)
@@ -575,13 +588,18 @@ elif menu == "Customer Persona":
                     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
                     user_features['cluster'] = kmeans.fit_predict(X_scaled)
 
+                    # 3. 페르소나 의미 자동 부여 (현실적인 쇼핑객 기준으로 라벨링 수정)
                     cluster_centers = user_features.groupby('cluster').mean()
+                    
+                    # '체류 시간'과 '방문 구역 수'를 더해서 종합 쇼핑 규모(Score) 산출
                     cluster_centers['score'] = cluster_centers['total_dwell_min'] + cluster_centers['unique_zones']
+                    
+                    # 규모가 큰 순서대로 1등, 2등, 3등 클러스터 정렬
                     sorted_clusters = cluster_centers.sort_values('score', ascending=False).index.tolist()
                     
-                    cluster_heavy = sorted_clusters[0]  
-                    cluster_medium = sorted_clusters[1] 
-                    cluster_light = sorted_clusters[2]  
+                    cluster_heavy = sorted_clusters[0]  # 가장 오래, 많이 둘러본 그룹
+                    cluster_medium = sorted_clusters[1] # 적당히 머문 그룹
+                    cluster_light = sorted_clusters[2]  # 아주 짧게 방문한 그룹
 
                     persona_map = {
                         cluster_heavy: '🛒 탐색형 (대형장보기)',
@@ -590,12 +608,14 @@ elif menu == "Customer Persona":
                     }
                     
                     color_map = {
-                        '🛒 탐색형 (대형장보기)': '#10B981', 
-                        '🚶 일반형 (표준장보기)': '#F59E0B', 
-                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   
+                        '🛒 탐색형 (대형장보기)': '#10B981', # 초록색 (우수 고객)
+                        '🚶 일반형 (표준장보기)': '#F59E0B', # 주황색 (일반 고객)
+                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   # 파란색 (목적 고객)
                     }
 
                     user_features['Persona'] = user_features['cluster'].map(persona_map)
+
+                    # 4. 결과 지표 표시
                     total_customers = len(user_features)
                     counts = user_features['Persona'].value_counts()
 
@@ -621,6 +641,7 @@ elif menu == "Customer Persona":
                             </div>
                             """, unsafe_allow_html=True)
 
+                    # 5. 산점도 분포 시각화 (Altair)
                     st.markdown("<br>#### 📊 Persona Distribution Map", unsafe_allow_html=True)
 
                     scatter = alt.Chart(user_features).mark_circle(size=80, opacity=0.7).encode(
@@ -637,6 +658,7 @@ elif menu == "Customer Persona":
 
                     st.altair_chart(scatter, use_container_width=True)
 
+                    # 6. 비즈니스 액션 제안 (Dynamic Insights)
                     st.markdown("<br>#### 💡 Actionable Insights", unsafe_allow_html=True)
 
                     explorer_pct = (counts.get('🛒 탐색형 (대형장보기)', 0) / total_customers) * 100
@@ -699,7 +721,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 지원!
+# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 + 두괄식 AI 브리핑 + Delta 온도차 카드 반영
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
@@ -722,7 +744,7 @@ elif menu == "Demand Forecast":
                 
                 # 🚨 [핵심] 이제 4개 구역이 아니라, AI가 학습한 모든 구역 이름을 불러옵니다!
                 target_zones = [f.replace('zone_', '') for f in features if f.startswith('zone_')]
-                if not target_zones: # 혹시라도 못 찾으면 기본 29개 구역을 넣습니다.
+                if not target_zones: 
                     target_zones = list(ZONES.keys())
                     
                 predictions = {}
@@ -831,17 +853,104 @@ elif menu == "Demand Forecast":
                     st.altair_chart(chart.properties(height=250), use_container_width=True)
                 except: pass
 
-                st.markdown("#### Zone Insights (예측 방문객 Top 10)")
-                # 너무 많아지므로 예측값이 높은 상위 10개만 리스트로 보여줍니다.
-                sorted_preds = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
+                st.markdown("<hr style='margin: 40px 0 20px 0; border-color: #334155;'>", unsafe_allow_html=True)
                 
-                for zone, traffic in sorted_preds[:10]:
-                    insight = ""
-                    if is_pre_holiday and zone in ['주류', '축산']: insight = " - [AI Insight] 공휴일 전날 파티 수요 급증. 전진 배치 권장."
-                    elif is_post_holiday and zone in ['채소/계란/과일', '식품코너']: insight = " - [AI Insight] 연휴 직후 신선식품 수요 집중."
-                    elif "Rainy" in future_weather and zone in ['라면', '퍼스널케어']: insight = " - [AI Insight] 우천 시 해당 구역 체류시간 증가."
+                # 💡 [적용 완료] 아이디어 4: 두괄식 화법 (AI 종합 브리핑)
+                st.markdown("#### 🗣️ AI 매니저 종합 운영 브리핑")
+                
+                # 브리핑 조건문 자동 생성
+                briefing_elements = []
+                if "Rainy" in future_weather: briefing_elements.append("**[비 오는 날씨]**")
+                elif "Cloudy" in future_weather: briefing_elements.append("**[흐린 날씨]**")
+                else: briefing_elements.append("**[맑은 날씨]**")
+                
+                if is_pre_holiday: briefing_elements.append("**[공휴일 전날]**")
+                elif is_post_holiday: briefing_elements.append("**[공휴일 직후]**")
+                elif is_weekend: briefing_elements.append("**[주말]**")
+                else: briefing_elements.append(f"**[{future_dayname}]**")
+
+                briefing_intro = f"점장님! 내일은 {'와 '.join(briefing_elements)} 요인이 겹치는 날입니다. "
+                
+                if is_pre_holiday: 
+                    briefing_detail = "연휴를 준비하는 목적성 쇼핑객이 몰리면서 **주류와 육류(축산)** 코너 등 파티 용품의 트래픽이 폭발할 것으로 예상됩니다. 해당 구역의 메인 매대를 비우고 행사 상품을 전진 배치하는 '공격적 투트랙 전략'을 제안합니다!"
+                elif "Rainy" in future_weather:
+                    briefing_detail = "비가 오기 때문에 고객들이 매장 전체를 둘러보기보다는 **라면(국물요리), 퍼스널케어(우산/위생)** 등 목적지 위주로 빠르게 쇼핑하고 나갈 확률이 높습니다. 해당 상품들을 입구 쪽 통로로 끌어내어 동선을 단축시켜 주는 전략이 유효합니다."
+                elif is_weekend:
+                    briefing_detail = "주말 특성상 가족 단위의 탐색형 고객이 많습니다. **장난감, 식품코너, 행사매대** 주변에서 연관 구매(Cross-selling)가 많이 일어날 수 있도록 시식 코너나 팝업을 활성화해 객단가를 높여주세요."
+                else:
+                    briefing_detail = "평이한 조건이므로 마트의 기본 뼈대인 **냉동식품과 채소 코너** 등 신선/필수 식품 위주의 안정적인 기본 재고 관리에 집중해 주시면 됩니다."
+
+                st.info(f"{briefing_intro}\n\n👉 {briefing_detail}")
+                
+                # 💡 [적용 완료] 아이디어 2: 온도차 (Delta) 분석 카드
+                st.markdown("<br>#### 🔥 오늘의 집중 관리 구역 (평소 대비 트래픽 변화량)", unsafe_allow_html=True)
+                
+                insight_data = []
+                for zone, traffic in predictions.items():
+                    # AI에게 '평범한 평일 맑은 날'의 베이스라인(기준점)을 계산하도록 지시
+                    base_input = pd.DataFrame(columns=features)
+                    base_input.loc[0] = 0
+                    base_input['Weather_Clean_Sunny'] = 1
+                    base_input['DayName_Clean_Wednesday'] = 1
+                    if f"zone_{zone}" in base_input.columns: 
+                        base_input[f"zone_{zone}"] = 1
                     
-                    st.markdown(f"- **{zone}**: {traffic:,.0f} visits {insight}")
+                    base_pred = ai_model.predict(base_input)[0]
+                    delta = traffic - base_pred
+                    delta_pct = (delta / base_pred * 100) if base_pred > 0 else 0
+                    
+                    insight_data.append({
+                        'Zone': zone,
+                        'Traffic': traffic,
+                        'Delta_Pct': delta_pct,
+                        'Delta_Raw': delta
+                    })
+                
+                # '평소 대비 변화율(절댓값)'이 가장 큰 순서대로 정렬 (가장 다이나믹하게 변한 핵심 구역 6개 추출)
+                insight_data.sort(key=lambda x: abs(x['Delta_Pct']), reverse=True)
+                
+                col_i1, col_i2 = st.columns(2)
+                for idx, data in enumerate(insight_data[:6]):
+                    zone = data['Zone']
+                    traffic = data['Traffic']
+                    pct = data['Delta_Pct']
+                    raw = data['Delta_Raw']
+                    
+                    # 변화율에 따른 색상 및 지침 자동 매핑
+                    if pct > 5:
+                        box_color = "rgba(16, 185, 129, 0.1)" # 초록색 틴트
+                        border_color = "#10B981"
+                        icon = "🔺"
+                        pct_color = "#10B981"
+                        action = "수요 급증! 결품 방지를 위해 재고 1.5배 보충 및 매대 전진 배치 요망"
+                    elif pct < -5:
+                        box_color = "rgba(244, 63, 94, 0.1)" # 빨간색 틴트
+                        border_color = "#F43F5E"
+                        icon = "🔻"
+                        pct_color = "#F43F5E"
+                        action = "트래픽 감소 예상. 해당 구역 전담 인력을 타 바쁜 구역으로 재배치 고려"
+                    else:
+                        box_color = "rgba(148, 163, 184, 0.05)" # 회색 틴트
+                        border_color = "#475569"
+                        icon = "➖"
+                        pct_color = "#94A3B8"
+                        action = "평소와 유사한 안정적 트래픽. 기존 발주 및 운영 매뉴얼 유지"
+                        
+                    card_html = f"""
+                    <div style="background-color: {box_color}; border-left: 4px solid {border_color}; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 5px 0; color: #F8FAFC; font-size: 16px;">{zone}</h4>
+                        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px;">
+                            <span style="font-size: 22px; font-weight: bold; color: #F8FAFC;">{traffic:,.0f}명</span>
+                            <span style="font-size: 14px; font-weight: bold; color: {pct_color};">{icon} 평소 대비 {abs(pct):.1f}% ({raw:+,.0f}명)</span>
+                        </div>
+                        <p style="margin: 0; font-size: 13px; color: #CBD5E1;">💡 {action}</p>
+                    </div>
+                    """
+                    # 지그재그로 예쁘게 카드 배치
+                    if idx % 2 == 0:
+                        with col_i1: st.markdown(card_html, unsafe_allow_html=True)
+                    else:
+                        with col_i2: st.markdown(card_html, unsafe_allow_html=True)
 
             except Exception as e: 
                 st.error(f"XGBoost 모델을 로드하거나 실행하는 중 오류가 발생했습니다. (파일이 있는지 확인하세요): {e}")
