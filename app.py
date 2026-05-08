@@ -721,7 +721,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ✨ [XGBoost XAI 적용 완료] Demand Forecast 모듈
+# ✨ [XGBoost XAI 적용 완료] Demand Forecast 모듈 (다이나믹 기여도 패치)
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
@@ -776,18 +776,33 @@ elif menu == "Demand Forecast":
                         # 증명 2: Feature Importance (AI가 중요하게 본 힌트)
                         st.markdown("**2. AI가 판단 기준으로 삼은 핵심 요인 (가중치 Top 5):**")
                         if hasattr(ai_model, 'feature_importances_'):
-                            imp_df = pd.DataFrame({'Feature': features, 'Importance': ai_model.feature_importances_})
+                            
+                            # --- 🌟 다이나믹 로컬 기여도 수식 적용 ---
+                            base_weights = ai_model.feature_importances_
+                            current_inputs = example_input.iloc[0].astype(float).values
+                            
+                            # 고정 가중치에 현재 입력값(0 또는 1)을 곱해서 선택된 조건만 활성화
+                            dynamic_weights = base_weights * current_inputs
+                            
+                            # 활성화된 값들만 모아서 다시 100% 비율로 환산
+                            total_weight = dynamic_weights.sum()
+                            if total_weight > 0:
+                                dynamic_weights = dynamic_weights / total_weight
+                                
+                            imp_df = pd.DataFrame({'Feature': features, 'Importance': dynamic_weights})
+                            
                             # 너무 기여도가 낮은 건 빼고 상위 5개만 정렬
                             imp_df = imp_df[imp_df['Importance'] > 0].sort_values('Importance', ascending=False).head(5)
                             
                             bar_chart = alt.Chart(imp_df).mark_bar(color='#F59E0B', cornerRadiusEnd=4).encode(
-                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='결정 기여도 (Weight)')),
+                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='오늘의 결정 기여도 (Dynamic Weight)')),
                                 y=alt.Y('Feature:N', sort='-x', title=''),
                                 tooltip=['Feature', alt.Tooltip('Importance:Q', format='.1%')]
                             ).properties(height=200)
                             st.altair_chart(bar_chart, use_container_width=True)
-                            st.caption("💡 위 차트는 AI가 이번 결과를 도출할 때 어떤 변수를 가장 유심히 보았는지 수학적으로 증명합니다.")
-                    
+                            st.caption("💡 위 차트는 점장님이 방금 선택하신 '현재 조건'들이 이번 예측 결과에 기여한 실시간 비중을 보여줍니다.")
+                            # ---------------------------------------------------------
+                            
                     with col_xai2:
                         # 증명 3: AI 뇌로 들어간 실제 수학적 변환 데이터
                         st.markdown("**3. AI 연산기로 전송된 수학적 텐서(Tensor) 데이터:**")
