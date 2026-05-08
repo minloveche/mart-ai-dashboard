@@ -488,24 +488,27 @@ if menu == "Traffic Summary":
                         
                         plot_data_multi['Trend'] = plot_data_multi.groupby('date')['visitors'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
                         
+                        # 💡 [버그 수정 완료] Hover 와 Legend Click 충돌 방지 로직
                         hover = alt.selection_point(fields=['Time'], nearest=True, on='mouseover', empty=False)
-                        
-                        # 💡 [신규] 범례 클릭 시 하이라이트 기능 추가 (Shift+클릭으로 다중 선택 가능)
                         legend_click = alt.selection_point(fields=['Label'], bind='legend')
 
                         base = alt.Chart(plot_data_multi).encode(
                             x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
                             y=alt.Y('Trend:Q', title='Trend (Avg Visitors)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
-                            color=alt.Color('Label:N', title='Legend', scale=alt.Scale(scheme='set2')),
-                            opacity=alt.condition(legend_click, alt.value(1.0), alt.value(0.15)) # 선택되지 않은 선은 흐리게 처리
-                        ).add_params(legend_click)
+                            color=alt.Color('Label:N', title='Legend', scale=alt.Scale(scheme='set2'))
+                        )
                         
-                        line = base.mark_line(interpolate='monotone', strokeWidth=3.5)
+                        # 선(Line)에는 범례 클릭에 대한 투명도만 적용
+                        line = base.mark_line(interpolate='monotone', strokeWidth=3.5).encode(
+                            opacity=alt.condition(legend_click, alt.value(1.0), alt.value(0.1))
+                        ).add_params(legend_click)
 
-                        selectors = alt.Chart(plot_data_multi).mark_point().encode(
-                            x='Time:T', opacity=alt.value(0)
+                        # 마우스 오버용 투명한 점
+                        selectors = base.mark_point().encode(
+                            opacity=alt.value(0)
                         ).add_params(hover)
 
+                        # Hover 시 나타나는 포인트에는 마우스 오버에 대한 투명도만 적용
                         points = base.mark_circle(size=80).encode(
                             opacity=alt.condition(hover, alt.value(1), alt.value(0)),
                             tooltip=[alt.Tooltip('Time:T', format='%H:%M'), 'Label:N', alt.Tooltip('visitors:Q', title='Raw Visitors'), alt.Tooltip('Trend:Q', format='.1f', title='Trend')]
