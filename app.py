@@ -166,7 +166,6 @@ def format_date_option(d):
 
 st.sidebar.title("Spatial Analytics")
 
-# ✨ Customer Persona 메뉴 포함
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -273,10 +272,8 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # Zone Performance (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating True Dwell Times..."):
-                    
                     MIN_STAY_SEC = 30 
                     
                     if 'stay_sec' in filtered_df.columns:
@@ -332,10 +329,8 @@ if menu == "Traffic Summary":
                             - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
                             """)
                 
-                # --- [고객 동선 맵 (Advanced Ver)] ---
                 st.markdown("<br>#### 🌊 Advanced Customer Flow Map", unsafe_allow_html=True)
                 
-                # UI 필터 컨트롤
                 col_map_1, col_map_2, col_map_3 = st.columns([1, 1, 1.5])
                 with col_map_1:
                     flow_limit = st.slider("보여줄 핵심 동선 개수 (Top N)", min_value=5, max_value=100, value=25, step=5)
@@ -356,7 +351,6 @@ if menu == "Traffic Summary":
                         flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                         
                         if not flow_counts.empty:
-                            # 1. 포커스 필터링 로직
                             if focus_zone == "전체 보기":
                                 top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
                             else:
@@ -431,7 +425,6 @@ if menu == "Traffic Summary":
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
-                # 장바구니 연관성 분석
                 st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
                 with st.spinner("Calculating Cross-Visitation..."):
                     unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
@@ -469,7 +462,6 @@ if menu == "Traffic Summary":
 
             else: st.info("No data available for the selected parameters.")
 
-        # 다중 날짜 비교
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -549,7 +541,6 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
-# ✨ [수정 완료] 고객 페르소나 (AI 세그먼테이션) 분석 모듈
 elif menu == "Customer Persona":
     st.title("Customer Behavior Persona (AI Clustering)")
 
@@ -566,8 +557,6 @@ elif menu == "Customer Persona":
 
         if not filtered_df.empty:
             with st.spinner("AI가 고객 데이터를 학습하여 3가지 행동 페르소나를 도출하고 있습니다..."):
-                
-                # 1. 고객별 특성 추출 (Feature Engineering)
                 if 'stay_sec' not in filtered_df.columns:
                     filtered_df['stay_sec'] = 10 
 
@@ -578,9 +567,7 @@ elif menu == "Customer Persona":
 
                 user_features['total_dwell_min'] = user_features['total_dwell'] / 60.0
 
-                # 최소 3명 이상의 데이터가 있어야 클러스터링 가능
                 if len(user_features) >= 3:
-                    # 2. K-Means 클러스터링 실행
                     X = user_features[['total_dwell_min', 'unique_zones']]
                     scaler = StandardScaler()
                     X_scaled = scaler.fit_transform(X)
@@ -588,18 +575,13 @@ elif menu == "Customer Persona":
                     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
                     user_features['cluster'] = kmeans.fit_predict(X_scaled)
 
-                    # 3. 페르소나 의미 자동 부여 (현실적인 쇼핑객 기준으로 라벨링 수정)
                     cluster_centers = user_features.groupby('cluster').mean()
-                    
-                    # '체류 시간'과 '방문 구역 수'를 더해서 종합 쇼핑 규모(Score) 산출
                     cluster_centers['score'] = cluster_centers['total_dwell_min'] + cluster_centers['unique_zones']
-                    
-                    # 규모가 큰 순서대로 1등, 2등, 3등 클러스터 정렬
                     sorted_clusters = cluster_centers.sort_values('score', ascending=False).index.tolist()
                     
-                    cluster_heavy = sorted_clusters[0]  # 가장 오래, 많이 둘러본 그룹
-                    cluster_medium = sorted_clusters[1] # 적당히 머문 그룹
-                    cluster_light = sorted_clusters[2]  # 아주 짧게 방문한 그룹
+                    cluster_heavy = sorted_clusters[0]  
+                    cluster_medium = sorted_clusters[1] 
+                    cluster_light = sorted_clusters[2]  
 
                     persona_map = {
                         cluster_heavy: '🛒 탐색형 (대형장보기)',
@@ -608,14 +590,12 @@ elif menu == "Customer Persona":
                     }
                     
                     color_map = {
-                        '🛒 탐색형 (대형장보기)': '#10B981', # 초록색 (우수 고객)
-                        '🚶 일반형 (표준장보기)': '#F59E0B', # 주황색 (일반 고객)
-                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   # 파란색 (목적 고객)
+                        '🛒 탐색형 (대형장보기)': '#10B981', 
+                        '🚶 일반형 (표준장보기)': '#F59E0B', 
+                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   
                     }
 
                     user_features['Persona'] = user_features['cluster'].map(persona_map)
-
-                    # 4. 결과 지표 표시
                     total_customers = len(user_features)
                     counts = user_features['Persona'].value_counts()
 
@@ -641,7 +621,6 @@ elif menu == "Customer Persona":
                             </div>
                             """, unsafe_allow_html=True)
 
-                    # 5. 산점도 분포 시각화 (Altair)
                     st.markdown("<br>#### 📊 Persona Distribution Map", unsafe_allow_html=True)
 
                     scatter = alt.Chart(user_features).mark_circle(size=80, opacity=0.7).encode(
@@ -658,7 +637,6 @@ elif menu == "Customer Persona":
 
                     st.altair_chart(scatter, use_container_width=True)
 
-                    # 6. 비즈니스 액션 제안 (Dynamic Insights)
                     st.markdown("<br>#### 💡 Actionable Insights", unsafe_allow_html=True)
 
                     explorer_pct = (counts.get('🛒 탐색형 (대형장보기)', 0) / total_customers) * 100
@@ -721,7 +699,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 + 두괄식 AI 브리핑 + Delta 온도차 카드 반영
+# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 + 두괄식 AI 브리핑 + Delta 온도차 카드 + 신뢰구간 곡선 반영
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
@@ -831,27 +809,72 @@ elif menu == "Demand Forecast":
                             st.dataframe(combined_input.T.rename(columns={0: 'Value'}), height=380)
                             st.caption(f"💡 총 {len(target_zones)}개 구역의 조건과 환경 정보가 0과 1의 Matrix로 변환되어 주입되었습니다.")
 
+                # 기존 트래픽 곡선 그리기 로직 (신뢰구간 & 비교군 점선 추가 패치)
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
                     total_predicted = sum(predictions.values()) 
-                    pred_curve = (hourly_ratio * total_predicted).reset_index()
-                    pred_curve.columns = ['Time', 'Expected Visitors']
+                    
+                    # 💡 1. 평소(기준점) 트래픽 총합 계산 (수요일/맑음 기준)
+                    base_total_predicted = 0
+                    for zone in target_zones:
+                        base_input = pd.DataFrame(columns=features)
+                        base_input.loc[0] = 0
+                        base_input['Weather_Clean_Sunny'] = 1
+                        base_input['DayName_Clean_Wednesday'] = 1
+                        if f"zone_{zone}" in base_input.columns: 
+                            base_input[f"zone_{zone}"] = 1
+                        base_total_predicted += ai_model.predict(base_input)[0]
+
+                    # 💡 2. 데이터프레임 구성 (오늘 예측, 평소 예측, 상한선, 하한선)
+                    pred_curve = pd.DataFrame({
+                        'Time_Str': hourly_ratio.index,
+                        'Expected Visitors': hourly_ratio.values * total_predicted,
+                        'Baseline': hourly_ratio.values * base_total_predicted
+                    })
+                    
+                    # 신뢰구간 (오차범위 ±15% 설정)
+                    pred_curve['Upper Bound'] = pred_curve['Expected Visitors'] * 1.15
+                    pred_curve['Lower Bound'] = pred_curve['Expected Visitors'] * 0.85
                     
                     base_date = pd.to_datetime("2026-01-01")
-                    pred_curve['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['Time'])
+                    pred_curve['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['Time_Str'])
                     
-                    st.markdown("<br>#### Forecasted Traffic Curve (전체 구역 합산)", unsafe_allow_html=True)
-                    chart = alt.Chart(pred_curve).mark_area(
-                        interpolate='monotone', color='#8B5CF6', opacity=0.3
+                    st.markdown("<br>#### Forecasted Traffic Curve (신뢰 구간 및 평소 대비 비교)", unsafe_allow_html=True)
+                    
+                    # 1. 신뢰 구간 밴드 (연한 보라색 배경)
+                    band_chart = alt.Chart(pred_curve).mark_area(
+                        interpolate='monotone', color='#8B5CF6', opacity=0.15
                     ).encode(
                         x=alt.X('Time:T', axis=alt.Axis(format='%H:%M', grid=True, gridColor='#475569', gridDash=[4, 4], gridWidth=0.8, tickCount=15, domainColor='#334155')),
-                        y=alt.Y('Expected Visitors:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155'))
-                    ) + alt.Chart(pred_curve).mark_line(
-                        interpolate='monotone', color='#A78BFA', strokeWidth=2
-                    ).encode(x=alt.X('Time:T'), y=alt.Y('Expected Visitors:Q'))
-                    st.altair_chart(chart.properties(height=250), use_container_width=True)
-                except: pass
+                        y=alt.Y('Lower Bound:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155', title='방문객 수 (명)')),
+                        y2='Upper Bound:Q'
+                    )
+                    
+                    # 2. 평소(기준점) 트래픽 곡선 (회색 점선)
+                    baseline_chart = alt.Chart(pred_curve).mark_line(
+                        interpolate='monotone', color='#94A3B8', strokeWidth=2, strokeDash=[5, 5]
+                    ).encode(
+                        x='Time:T',
+                        y='Baseline:Q'
+                    )
+                    
+                    # 3. 오늘 예측 트래픽 곡선 (진한 보라색 실선)
+                    main_line = alt.Chart(pred_curve).mark_line(
+                        interpolate='monotone', color='#A78BFA', strokeWidth=3.5
+                    ).encode(
+                        x='Time:T', 
+                        y='Expected Visitors:Q',
+                        tooltip=[alt.Tooltip('Time:T', format='%H:%M', title='시간'), alt.Tooltip('Expected Visitors:Q', format=',.0f', title='오늘 예상 (명)'), alt.Tooltip('Baseline:Q', format=',.0f', title='평소 평균 (명)')]
+                    )
+                    
+                    # 차트 합치기
+                    final_chart = (band_chart + baseline_chart + main_line).properties(height=300)
+                    st.altair_chart(final_chart, use_container_width=True)
+                    
+                    st.caption("💡 **[차트 가이드]** 🟪 진한 실선: 오늘의 예측 추이 / ⬜ 회색 점선: 평소(수요일/맑음) 평균 추이 / 옅은 보라색 띠: AI 예측 오차 범위(±15%)")
+                except Exception as e: 
+                    st.error(f"차트 렌더링 에러: {e}")
 
                 st.markdown("<hr style='margin: 40px 0 20px 0; border-color: #334155;'>", unsafe_allow_html=True)
                 
