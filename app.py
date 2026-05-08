@@ -166,7 +166,6 @@ def format_date_option(d):
 
 st.sidebar.title("Spatial Analytics")
 
-# ✨ Customer Persona 메뉴 포함
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -273,10 +272,8 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Chart Render Error: {e}")
                 
-                # Zone Performance (Magic Quadrant)
                 st.markdown("<br>#### Zone Performance (Magic Quadrant)", unsafe_allow_html=True)
                 with st.spinner("Calculating True Dwell Times..."):
-                    
                     MIN_STAY_SEC = 30 
                     
                     if 'stay_sec' in filtered_df.columns:
@@ -332,10 +329,8 @@ if menu == "Traffic Summary":
                             - **좌하단 (Dead Zone):** 방문객도 없고 빨리 나가는 개선 필요 구역
                             """)
                 
-                # --- [고객 동선 맵 (Advanced Ver)] ---
                 st.markdown("<br>#### 🌊 Advanced Customer Flow Map", unsafe_allow_html=True)
                 
-                # UI 필터 컨트롤
                 col_map_1, col_map_2, col_map_3 = st.columns([1, 1, 1.5])
                 with col_map_1:
                     flow_limit = st.slider("보여줄 핵심 동선 개수 (Top N)", min_value=5, max_value=100, value=25, step=5)
@@ -356,7 +351,6 @@ if menu == "Traffic Summary":
                         flow_counts = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                         
                         if not flow_counts.empty:
-                            # 1. 포커스 필터링 로직
                             if focus_zone == "전체 보기":
                                 top_flows = flow_counts.sort_values('weight', ascending=False).head(flow_limit)
                             else:
@@ -431,7 +425,6 @@ if menu == "Traffic Summary":
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
 
-                # 장바구니 연관성 분석
                 st.markdown("<br>#### Basket & Cross-Visitation Analysis", unsafe_allow_html=True)
                 with st.spinner("Calculating Cross-Visitation..."):
                     unique_visits = filtered_df.drop_duplicates(subset=['real_user_id', 'zone'])
@@ -469,7 +462,6 @@ if menu == "Traffic Summary":
 
             else: st.info("No data available for the selected parameters.")
 
-        # 다중 날짜 비교
         with tab2:
             default_selections = available_dates[:2] if len(available_dates) >= 2 else available_dates
             selected_multi_dates = st.multiselect(
@@ -549,7 +541,6 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
-# ✨ [수정 완료] 고객 페르소나 (AI 세그먼테이션) 분석 모듈
 elif menu == "Customer Persona":
     st.title("Customer Behavior Persona (AI Clustering)")
 
@@ -566,8 +557,6 @@ elif menu == "Customer Persona":
 
         if not filtered_df.empty:
             with st.spinner("AI가 고객 데이터를 학습하여 3가지 행동 페르소나를 도출하고 있습니다..."):
-                
-                # 1. 고객별 특성 추출 (Feature Engineering)
                 if 'stay_sec' not in filtered_df.columns:
                     filtered_df['stay_sec'] = 10 
 
@@ -578,9 +567,7 @@ elif menu == "Customer Persona":
 
                 user_features['total_dwell_min'] = user_features['total_dwell'] / 60.0
 
-                # 최소 3명 이상의 데이터가 있어야 클러스터링 가능
                 if len(user_features) >= 3:
-                    # 2. K-Means 클러스터링 실행
                     X = user_features[['total_dwell_min', 'unique_zones']]
                     scaler = StandardScaler()
                     X_scaled = scaler.fit_transform(X)
@@ -588,18 +575,13 @@ elif menu == "Customer Persona":
                     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
                     user_features['cluster'] = kmeans.fit_predict(X_scaled)
 
-                    # 3. 페르소나 의미 자동 부여 (현실적인 쇼핑객 기준으로 라벨링 수정)
                     cluster_centers = user_features.groupby('cluster').mean()
-                    
-                    # '체류 시간'과 '방문 구역 수'를 더해서 종합 쇼핑 규모(Score) 산출
                     cluster_centers['score'] = cluster_centers['total_dwell_min'] + cluster_centers['unique_zones']
-                    
-                    # 규모가 큰 순서대로 1등, 2등, 3등 클러스터 정렬
                     sorted_clusters = cluster_centers.sort_values('score', ascending=False).index.tolist()
                     
-                    cluster_heavy = sorted_clusters[0]  # 가장 오래, 많이 둘러본 그룹
-                    cluster_medium = sorted_clusters[1] # 적당히 머문 그룹
-                    cluster_light = sorted_clusters[2]  # 아주 짧게 방문한 그룹
+                    cluster_heavy = sorted_clusters[0]  
+                    cluster_medium = sorted_clusters[1] 
+                    cluster_light = sorted_clusters[2]  
 
                     persona_map = {
                         cluster_heavy: '🛒 탐색형 (대형장보기)',
@@ -608,14 +590,12 @@ elif menu == "Customer Persona":
                     }
                     
                     color_map = {
-                        '🛒 탐색형 (대형장보기)': '#10B981', # 초록색 (우수 고객)
-                        '🚶 일반형 (표준장보기)': '#F59E0B', # 주황색 (일반 고객)
-                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   # 파란색 (목적 고객)
+                        '🛒 탐색형 (대형장보기)': '#10B981', 
+                        '🚶 일반형 (표준장보기)': '#F59E0B', 
+                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   
                     }
 
                     user_features['Persona'] = user_features['cluster'].map(persona_map)
-
-                    # 4. 결과 지표 표시
                     total_customers = len(user_features)
                     counts = user_features['Persona'].value_counts()
 
@@ -641,7 +621,6 @@ elif menu == "Customer Persona":
                             </div>
                             """, unsafe_allow_html=True)
 
-                    # 5. 산점도 분포 시각화 (Altair)
                     st.markdown("<br>#### 📊 Persona Distribution Map", unsafe_allow_html=True)
 
                     scatter = alt.Chart(user_features).mark_circle(size=80, opacity=0.7).encode(
@@ -658,7 +637,6 @@ elif menu == "Customer Persona":
 
                     st.altair_chart(scatter, use_container_width=True)
 
-                    # 6. 비즈니스 액션 제안 (Dynamic Insights)
                     st.markdown("<br>#### 💡 Actionable Insights", unsafe_allow_html=True)
 
                     explorer_pct = (counts.get('🛒 탐색형 (대형장보기)', 0) / total_customers) * 100
@@ -721,7 +699,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ✨ [XGBoost XAI 적용 완료] Demand Forecast 모듈 (매장 전체 종합 가중치 패치)
+# ✨ [XGBoost XAI 적용 완료] 전 구역 훈련 모드 지원!
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
@@ -739,13 +717,15 @@ elif menu == "Demand Forecast":
             
         if st.button("Run XGBoost Forecast", use_container_width=True):
             try:
-                # 1. AI 뇌 불러오기
                 ai_model = joblib.load("ai_forecaster.pkl")
                 features = joblib.load("ai_features.pkl")
                 
-                target_zones = ['라면', '채소/계란/과일', '주류', '장난감']
+                # 🚨 [핵심] 이제 4개 구역이 아니라, AI가 학습한 모든 구역 이름을 불러옵니다!
+                target_zones = [f.replace('zone_', '') for f in features if f.startswith('zone_')]
+                if not target_zones: # 혹시라도 못 찾으면 기본 29개 구역을 넣습니다.
+                    target_zones = list(ZONES.keys())
+                    
                 predictions = {}
-                
                 inputs_dict = {} 
                 
                 for zone in target_zones:
@@ -756,16 +736,17 @@ elif menu == "Demand Forecast":
                     elif "Cloudy" in future_weather: input_data['Weather_Clean_Cloudy'] = 1
                     elif "Rainy" in future_weather: input_data['Weather_Clean_Rainy'] = 1
                     if f"DayName_Clean_{future_dayname}" in input_data.columns: input_data[f"DayName_Clean_{future_dayname}"] = 1
-                    if f"zone_{zone}" in input_data.columns: input_data[f"zone_{zone}"] = 1
+                    
+                    if f"zone_{zone}" in input_data.columns: 
+                        input_data[f"zone_{zone}"] = 1
                     
                     predictions[zone] = ai_model.predict(input_data)[0]
                     inputs_dict[zone] = input_data.copy() 
                 
-                # ✨ [XAI] AI 엔진 증명 및 사고 과정 패널
                 with st.expander("🔍 XGBoost 엔진 작동 증명 및 AI 사고 과정 (Explainable AI)", expanded=True):
                     st.markdown(f"**1. 탑재된 인공지능 모듈 확인:** `<class '{type(ai_model).__module__}.{type(ai_model).__name__}'>`")
                     if 'XGB' in type(ai_model).__name__:
-                        st.success("✅ XGBoost 머신러닝 알고리즘이 정상적으로 로드되어 연산을 수행했습니다.")
+                        st.success(f"✅ XGBoost 머신러닝 알고리즘이 정상적으로 로드되었습니다. (총 {len(target_zones)}개 구역 탐지됨)")
                     else:
                         st.warning("⚠️ XGBoost가 아닌 다른 임시 모델이 로드되었습니다.")
                     
@@ -774,59 +755,71 @@ elif menu == "Demand Forecast":
                     col_xai1, col_xai2 = st.columns([1.5, 1])
                     
                     with col_xai1:
-                        # ✨ 점장님 피드백 반영: '매장 전체' 통합 가중치 랭킹!
-                        st.markdown("**2. 오늘 매장 전체 트래픽을 결정한 핵심 요인 (종합 가중치 Top 10):**")
+                        st.markdown("**2. AI 결정 요인 심층 분석 (구역별 체급 vs 외부 변동성):**")
                         if hasattr(ai_model, 'feature_importances_'):
                             
                             base_weights = ai_model.feature_importances_
                             combined_weights = np.zeros_like(base_weights)
                             
-                            # 모든 타겟 구역(라면, 채소, 주류 등)의 입력값을 합산하여 
-                            # '현재 매장 전체'에 가해지는 요인들의 힘을 계산합니다.
                             for z in target_zones:
-                                current_inputs = inputs_dict[z].iloc[0].astype(float).values
-                                combined_weights += (base_weights * current_inputs)
-                            
-                            # 100% 비율로 환산
-                            total_weight = combined_weights.sum()
-                            if total_weight > 0:
-                                combined_weights = combined_weights / total_weight
+                                if f"zone_{z}" in inputs_dict[z].columns:
+                                    current_inputs = inputs_dict[z].iloc[0].astype(float).values
+                                    combined_weights += (base_weights * current_inputs)
                                 
                             imp_df = pd.DataFrame({'Feature': features, 'Importance': combined_weights})
                             
-                            # 모든 구역과 날씨/요일이 다 나올 수 있도록 Top 10까지 보여줍니다.
-                            imp_df = imp_df[imp_df['Importance'] > 0].sort_values('Importance', ascending=False).head(10)
+                            df_zone = imp_df[imp_df['Feature'].str.contains('zone_')].copy()
+                            df_ext = imp_df[~imp_df['Feature'].str.contains('zone_')].copy()
                             
-                            bar_chart = alt.Chart(imp_df).mark_bar(color='#F59E0B', cornerRadiusEnd=4).encode(
-                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='종합 결정 기여도 (Dynamic Weight)')),
-                                y=alt.Y('Feature:N', sort='-x', title=''),
+                            if df_zone['Importance'].sum() > 0: 
+                                df_zone['Importance'] = df_zone['Importance'] / df_zone['Importance'].sum()
+                            if df_ext['Importance'].sum() > 0: 
+                                df_ext['Importance'] = df_ext['Importance'] / df_ext['Importance'].sum()
+                            
+                            # 구역은 가장 파워가 강한 상위 10개만 보여줍니다.
+                            df_zone = df_zone[df_zone['Importance'] > 0].sort_values('Importance', ascending=False).head(10)
+                            df_ext = df_ext[df_ext['Importance'] > 0].sort_values('Importance', ascending=False).head(5)
+                            
+                            # 차트 1: 구역별 체급 파워 (초록색)
+                            chart_zone = alt.Chart(df_zone).mark_bar(color='#10B981', cornerRadiusEnd=4).encode(
+                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='')),
+                                y=alt.Y('Feature:N', sort='-x', title='구역별 기본 체급 (Top 10)'),
                                 tooltip=['Feature', alt.Tooltip('Importance:Q', format='.1%')]
-                            ).properties(height=250)
-                            st.altair_chart(bar_chart, use_container_width=True)
-                            st.caption("💡 위 차트는 점장님이 선택하신 요일/날씨 조건 하에서, **매장 내 주요 구역들의 파워와 외부 요인들이 종합적으로 어떻게 순위를 다투는지** 보여줍니다.")
+                            ).properties(height=200)
+                            
+                            # 차트 2: 외부 환경 요인 파워 (주황색)
+                            chart_ext = alt.Chart(df_ext).mark_bar(color='#F59E0B', cornerRadiusEnd=4).encode(
+                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='독립 기여도 (100% 환산)')),
+                                y=alt.Y('Feature:N', sort='-x', title='외부 환경 요인'),
+                                tooltip=['Feature', alt.Tooltip('Importance:Q', format='.1%')]
+                            ).properties(height=140)
+                            
+                            st.altair_chart(alt.vconcat(chart_zone, chart_ext), use_container_width=True)
+                            
+                            st.caption("💡 **[해석 가이드]** 위쪽 초록색 차트는 마트 구역별 트래픽 랭킹(고정 체급)을, 아래쪽 주황색 차트는 점장님이 방금 선택하신 날씨/요일 조건들이 트래픽 변화에 얼마나 기여했는지 독립적으로 보여줍니다.")
                             
                     with col_xai2:
                         st.markdown("**3. AI 연산기로 전송된 수학적 텐서(Tensor) 통합 데이터:**")
-                        # 증명용 표도 모든 구역에 불이 켜진(1) 통합 상태로 보여줍니다.
-                        combined_input = inputs_dict[target_zones[0]].copy()
-                        for z in target_zones[1:]:
-                            combined_input[f'zone_{z}'] = 1 
-                            
-                        st.dataframe(combined_input.T.rename(columns={0: 'Value'}), height=280)
-                        st.caption("💡 모든 타겟 구역의 조건과 날씨/휴일 정보가 0과 1의 Matrix로 통합 변환되어 주입되었습니다.")
+                        if target_zones:
+                            combined_input = inputs_dict[target_zones[0]].copy()
+                            for z in target_zones[1:]:
+                                if f"zone_{z}" in combined_input.columns:
+                                    combined_input[f'zone_{z}'] = 1 
+                                
+                            st.dataframe(combined_input.T.rename(columns={0: 'Value'}), height=380)
+                            st.caption(f"💡 총 {len(target_zones)}개 구역의 조건과 환경 정보가 0과 1의 Matrix로 변환되어 주입되었습니다.")
 
-                # 기존 트래픽 곡선 그리기 로직
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
                     hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
-                    total_predicted = sum(predictions.values()) * 2.5 
+                    total_predicted = sum(predictions.values()) 
                     pred_curve = (hourly_ratio * total_predicted).reset_index()
                     pred_curve.columns = ['Time', 'Expected Visitors']
                     
                     base_date = pd.to_datetime("2026-01-01")
                     pred_curve['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['Time'])
                     
-                    st.markdown("<br>#### Forecasted Traffic Curve", unsafe_allow_html=True)
+                    st.markdown("<br>#### Forecasted Traffic Curve (전체 구역 합산)", unsafe_allow_html=True)
                     chart = alt.Chart(pred_curve).mark_area(
                         interpolate='monotone', color='#8B5CF6', opacity=0.3
                     ).encode(
@@ -838,12 +831,15 @@ elif menu == "Demand Forecast":
                     st.altair_chart(chart.properties(height=250), use_container_width=True)
                 except: pass
 
-                st.markdown("#### Zone Insights")
-                for zone, traffic in predictions.items():
+                st.markdown("#### Zone Insights (예측 방문객 Top 10)")
+                # 너무 많아지므로 예측값이 높은 상위 10개만 리스트로 보여줍니다.
+                sorted_preds = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
+                
+                for zone, traffic in sorted_preds[:10]:
                     insight = ""
-                    if is_pre_holiday and zone == '주류': insight = " - [AI Insight] 공휴일 전날 수요 급증. 재고 및 전진 배치 권장."
-                    elif is_post_holiday and zone == '채소/계란/과일': insight = " - [AI Insight] 연휴 직후 신선식품 수요 집중. 재고 1.3배 확보 요망."
-                    elif "Rainy" in future_weather and zone == '라면': insight = " - [AI Insight] 우천 시 국물 요리 수요 증가."
+                    if is_pre_holiday and zone in ['주류', '축산']: insight = " - [AI Insight] 공휴일 전날 파티 수요 급증. 전진 배치 권장."
+                    elif is_post_holiday and zone in ['채소/계란/과일', '식품코너']: insight = " - [AI Insight] 연휴 직후 신선식품 수요 집중."
+                    elif "Rainy" in future_weather and zone in ['라면', '퍼스널케어']: insight = " - [AI Insight] 우천 시 해당 구역 체류시간 증가."
                     
                     st.markdown(f"- **{zone}**: {traffic:,.0f} visits {insight}")
 
