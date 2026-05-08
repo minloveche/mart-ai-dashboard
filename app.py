@@ -14,6 +14,9 @@ import datetime
 import joblib
 import networkx as nx
 import math
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import matplotlib.patheffects as PathEffects
 
 try:
     import google.generativeai as genai
@@ -362,28 +365,43 @@ if menu == "Traffic Summary":
                             except: 
                                 ax_flow.set_xlim(0, 663); ax_flow.set_ylim(500, 0); ax_flow.invert_yaxis()
                             
+                            # --- [전문가급 시각화 업그레이드] ---
                             max_pop = max(list(zone_popularity.values())) if zone_popularity.values() else 1
                             max_weight = max([G[u][v]['weight'] for u, v in G.edges()]) if G.edges() else 1
                             
-                            # [개선 2] 노드 디자인 업그레이드
-                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 2000 + 150 for node in G.nodes()]
-                            node_colors = ['#38BDF8' if zone_popularity.get(node, 0) > (max_pop * 0.4) else '#475569' for node in G.nodes()]
+                            # 1. 노드(구역) 스타일링: 세련된 다크 테마
+                            node_sizes = [(zone_popularity.get(node, 0) / max_pop) * 2000 + 200 for node in G.nodes()]
+                            # 트래픽 상위 30%는 돋보이는 시안(Cyan) 색상, 나머지는 차분한 슬레이트(Slate) 색상
+                            node_colors = ['#0EA5E9' if zone_popularity.get(node, 0) > (max_pop * 0.3) else '#334155' for node in G.nodes()]
                             
-                            import matplotlib.cm as cm
-                            import matplotlib.colors as mcolors
-                            
-                            # [개선 3] 화살표에 플라즈마 컬러맵(볼륨에 따른 그라데이션) 적용
-                            cmap = cm.get_cmap('plasma') 
+                            # 2. 엣지(동선) 스타일링: B2B 엔터프라이즈 커스텀 그라데이션
+                            # 딥블루 -> 스카이블루 -> 앰버(황색) -> 코랄레드
+                            custom_colors = ["#1E293B", "#38BDF8", "#F59E0B", "#F43F5E"]
+                            cmap_custom = mcolors.LinearSegmentedColormap.from_list("custom_flow", custom_colors)
                             norm = mcolors.Normalize(vmin=0, vmax=max_weight)
                             
-                            edge_colors = [cmap(norm(G[u][v]['weight'])) for u, v in G.edges()]
-                            edge_widths = [(G[u][v]['weight'] / max_weight) * 6 + 1.0 for u, v in G.edges()]
+                            edge_widths = [(G[u][v]['weight'] / max_weight) * 5 + 0.8 for u, v in G.edges()]
                             
-                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.5, alpha=0.9)
-                            nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color=edge_colors, arrowsize=20, alpha=0.85, connectionstyle='arc3,rad=0.2')
+                            # 색상과 투명도(Alpha)를 트래픽 비중에 따라 개별 계산 (메인 동선만 뚜렷하게)
+                            rgba_colors = []
+                            for u, v in G.edges():
+                                weight = G[u][v]['weight']
+                                rgba = list(cmap_custom(norm(weight))) # [R, G, B, A] 추출
+                                rgba[3] = max(0.2, weight / max_weight) # 트래픽이 적을수록 더 투명해짐 (최소 투명도 0.2)
+                                rgba_colors.append(rgba)
                             
-                            # 라벨 배경도 세련되게 변경
-                            nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=10, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.85, edgecolor='#38BDF8', boxstyle='round,pad=0.3'))
+                            # 노드 그리기
+                            nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.95)
+                            
+                            # 엣지 그리기 (커스텀 투명도 적용)
+                            nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color=rgba_colors, arrowsize=18, connectionstyle='arc3,rad=0.2')
+                            
+                            # 3. 라벨 스타일링: 투박한 박스 제거 및 다크 글로우(Dark Glow) 외곽선 적용
+                            labels = nx.draw_networkx_labels(G, pos, ax=ax_flow, font_family=plt.rcParams['font.family'], font_size=10, font_weight='bold', font_color='#F8FAFC')
+                            
+                            # 글씨가 도면과 겹쳐도 잘 보이도록 글씨 테두리에만 어두운 효과 부여
+                            for _, text_obj in labels.items():
+                                text_obj.set_path_effects([PathEffects.withStroke(linewidth=3, foreground='#020617')])
                             
                             ax_flow.axis('off')
                             st.pyplot(fig_flow, facecolor='#0F172A')
@@ -418,7 +436,7 @@ if menu == "Traffic Summary":
                         with st.expander("💡 Tip"):
                             st.markdown("""
                             - **색상의 의미:** 색상이 진한 보라색일수록 두 구역을 함께 방문한 고객이 많다는 뜻입니다.
-                            - **인사이트 도출:** 비 오는 날짜를 선택했을 때 특정 상품군(예: 라면-주류)의 색상이 짙어진다면, 해당 조합의 묶음 할인을 기획하거나 매대를 가깝게 배치하여 크로스셀링(Cross-selling)을 유도할 수 있습니다.
+                            - **인사이트 도출:** 비 오는 날짜를 선택했을 때 특정 상품군(예: 라면-주류)의 색상이 짙어진다면, 해당 조합의 묶음 할인을 기획하거나 매대를 가깝게 배치하여 크로스셀링(Cross-selling)을 유도할 수 시도할 수 있습니다.
                             - **대각선 빈칸:** 같은 구역(예: 라면-라면)이 만나는 곳은 데이터 방해를 막기 위해 의도적으로 제외(0) 처리되었습니다.
                             """)
                     else:
