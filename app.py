@@ -166,7 +166,7 @@ def format_date_option(d):
 
 st.sidebar.title("Spatial Analytics")
 
-# ✨ [신규 추가] Customer Persona 메뉴가 두 번째에 추가되었습니다.
+# ✨ Customer Persona 메뉴 포함
 main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
@@ -549,7 +549,7 @@ if menu == "Traffic Summary":
                 except Exception as e: 
                     st.error(f"Multi-Date Chart Error: {e}")
 
-# ✨ [신규 추가] 고객 페르소나 (AI 세그먼테이션) 분석 모듈
+# ✨ [수정 완료] 고객 페르소나 (AI 세그먼테이션) 분석 모듈
 elif menu == "Customer Persona":
     st.title("Customer Behavior Persona (AI Clustering)")
 
@@ -588,32 +588,29 @@ elif menu == "Customer Persona":
                     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
                     user_features['cluster'] = kmeans.fit_predict(X_scaled)
 
-                    # 3. 페르소나 의미 자동 부여 (라벨링 로직)
+                    # 3. 페르소나 의미 자동 부여 (현실적인 쇼핑객 기준으로 라벨링 수정)
                     cluster_centers = user_features.groupby('cluster').mean()
                     
-                    # 가장 여러 구역을 다닌 그룹 = 탐색형(대형장보기)
-                    sorted_by_zones = cluster_centers.sort_values('unique_zones', ascending=False).index.tolist()
-                    cluster_explorer = sorted_by_zones[0]
-
-                    remaining = [c for c in [0, 1, 2] if c != cluster_explorer]
+                    # '체류 시간'과 '방문 구역 수'를 더해서 종합 쇼핑 규모(Score) 산출
+                    cluster_centers['score'] = cluster_centers['total_dwell_min'] + cluster_centers['unique_zones']
                     
-                    # 남은 두 그룹 중 체류시간이 월등히 긴 그룹 = 직원/정체형
-                    if cluster_centers.loc[remaining[0], 'total_dwell_min'] > cluster_centers.loc[remaining[1], 'total_dwell_min']:
-                        cluster_employee = remaining[0]
-                        cluster_goal = remaining[1]
-                    else:
-                        cluster_employee = remaining[1]
-                        cluster_goal = remaining[0]
+                    # 규모가 큰 순서대로 1등, 2등, 3등 클러스터 정렬
+                    sorted_clusters = cluster_centers.sort_values('score', ascending=False).index.tolist()
+                    
+                    cluster_heavy = sorted_clusters[0]  # 가장 오래, 많이 둘러본 그룹
+                    cluster_medium = sorted_clusters[1] # 적당히 머문 그룹
+                    cluster_light = sorted_clusters[2]  # 아주 짧게 방문한 그룹
 
                     persona_map = {
-                        cluster_explorer: '🛒 탐색형 (대형장보기)',
-                        cluster_employee: '🕴️ 직원/정체형 (노이즈)',
-                        cluster_goal: '🏃‍♂️ 목적형 (체리피커)'
+                        cluster_heavy: '🛒 탐색형 (대형장보기)',
+                        cluster_medium: '🚶 일반형 (표준장보기)',
+                        cluster_light: '🏃‍♂️ 목적형 (퀵쇼핑)'
                     }
+                    
                     color_map = {
-                        '🛒 탐색형 (대형장보기)': '#10B981', 
-                        '🕴️ 직원/정체형 (노이즈)': '#F43F5E', 
-                        '🏃‍♂️ 목적형 (체리피커)': '#38BDF8'  
+                        '🛒 탐색형 (대형장보기)': '#10B981', # 초록색 (우수 고객)
+                        '🚶 일반형 (표준장보기)': '#F59E0B', # 주황색 (일반 고객)
+                        '🏃‍♂️ 목적형 (퀵쇼핑)': '#38BDF8'   # 파란색 (목적 고객)
                     }
 
                     user_features['Persona'] = user_features['cluster'].map(persona_map)
@@ -627,8 +624,8 @@ elif menu == "Customer Persona":
                     cols = st.columns(3)
                     metric_data = [
                         ('🛒 탐색형 (대형장보기)', '매장 곳곳을 돌며 장시간 탐색 (대량 구매 유력)'),
-                        ('🏃‍♂️ 목적형 (체리피커)', '살 물건이 있는 특정 구역만 빠르게 방문'),
-                        ('🕴️ 직원/정체형 (노이즈)', '한두 구역에만 비정상적으로 오랜 시간 체류')
+                        ('🚶 일반형 (표준장보기)', '평균적인 시간을 들여 필요한 구역들을 방문'),
+                        ('🏃‍♂️ 목적형 (퀵쇼핑)', '살 물건이 있는 1~2개 구역만 빠르게 찍고 이탈')
                     ]
 
                     for i, (p_name, p_desc) in enumerate(metric_data):
@@ -665,12 +662,12 @@ elif menu == "Customer Persona":
                     st.markdown("<br>#### 💡 Actionable Insights", unsafe_allow_html=True)
 
                     explorer_pct = (counts.get('🛒 탐색형 (대형장보기)', 0) / total_customers) * 100
-                    goal_pct = (counts.get('🏃‍♂️ 목적형 (체리피커)', 0) / total_customers) * 100
+                    goal_pct = (counts.get('🏃‍♂️ 목적형 (퀵쇼핑)', 0) / total_customers) * 100
 
                     if explorer_pct > 30:
                         insight_text = "현재 선택하신 날짜에는 **'탐색형 고객(대량 구매 유력)'의 비율이 상당히 높습니다.** 고객들이 매장 전체를 돌아다니며 쇼핑을 즐기고 있으므로, 동선 중간중간에 '연관 구매(Cross-selling)'를 유도하는 팝업 매대나 시식 코너를 적극적으로 배치하면 객단가를 극대화할 수 있습니다."
                     elif goal_pct > 50:
-                        insight_text = "현재 **'목적형 고객(체리피커)'이 과반수 이상을 차지하고 있습니다.** 고객들이 목적지만 딱 찍고 빠르게 이탈하고 있습니다. 이들의 체류 시간을 늘리기 위해 입구에서 메인 동선으로 이어지는 길목에 강력한 미끼 상품(Loss Leader)이나 강렬한 시각적 자극을 주는 특별 기획 행사장을 배치할 필요가 있습니다."
+                        insight_text = "현재 **'목적형 고객(퀵쇼핑)'이 과반수 이상을 차지하고 있습니다.** 고객들이 목적지만 딱 찍고 빠르게 이탈하고 있습니다. 이들의 체류 시간을 늘리기 위해 입구에서 메인 동선으로 이어지는 길목에 강력한 미끼 상품(Loss Leader)이나 강렬한 시각적 자극을 주는 특별 기획 행사장을 배치할 필요가 있습니다."
                     else:
                         insight_text = "현재 탐색형과 목적형 고객이 비교적 고르게 분포되어 있습니다. 매장 깊숙한 주동선에는 탐색형 고객을 위한 마진율 높은 브랜딩 행사를, 계산대 인근이나 출입구 쪽에는 목적형 고객이 마지막에 충동구매할 수 있는 스낵/음료류를 전진 배치하는 투트랙(Two-track) 레이아웃 전략을 권장합니다."
 
