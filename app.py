@@ -721,7 +721,7 @@ elif menu == "Heatmap Analysis":
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
 
-# ✨ [XGBoost XAI 적용 완료] Demand Forecast 모듈 (구역별 선택 패치)
+# ✨ [XGBoost XAI 적용 완료] Demand Forecast 모듈 (매장 전체 종합 가중치 패치)
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
@@ -746,7 +746,6 @@ elif menu == "Demand Forecast":
                 target_zones = ['라면', '채소/계란/과일', '주류', '장난감']
                 predictions = {}
                 
-                # ✨ 핵심: 모든 구역의 입력 데이터를 다 저장해둡니다!
                 inputs_dict = {} 
                 
                 for zone in target_zones:
@@ -760,11 +759,10 @@ elif menu == "Demand Forecast":
                     if f"zone_{zone}" in input_data.columns: input_data[f"zone_{zone}"] = 1
                     
                     predictions[zone] = ai_model.predict(input_data)[0]
-                    inputs_dict[zone] = input_data.copy() # 모든 구역 데이터 개별 저장
+                    inputs_dict[zone] = input_data.copy() 
                 
                 # ✨ [XAI] AI 엔진 증명 및 사고 과정 패널
                 with st.expander("🔍 XGBoost 엔진 작동 증명 및 AI 사고 과정 (Explainable AI)", expanded=True):
-                    # 증명 1: 실제 로드된 클래스 타입 출력
                     st.markdown(f"**1. 탑재된 인공지능 모듈 확인:** `<class '{type(ai_model).__module__}.{type(ai_model).__name__}'>`")
                     if 'XGB' in type(ai_model).__name__:
                         st.success("✅ XGBoost 머신러닝 알고리즘이 정상적으로 로드되어 연산을 수행했습니다.")
@@ -773,43 +771,49 @@ elif menu == "Demand Forecast":
                     
                     st.markdown("---")
                     
-                    # ✨ 점장님의 아이디어: 어떤 구역의 사고과정을 볼지 선택하는 위젯 추가!
-                    selected_xai_zone = st.selectbox("🎯 AI 사고 과정을 분석할 타겟 구역을 선택하세요:", target_zones)
-                    
                     col_xai1, col_xai2 = st.columns([1.5, 1])
                     
                     with col_xai1:
-                        # 증명 2: Feature Importance (선택한 구역 기준)
-                        st.markdown(f"**2. '{selected_xai_zone}' 트래픽 예측 시 핵심 요인 (가중치 Top 5):**")
+                        # ✨ 점장님 피드백 반영: '매장 전체' 통합 가중치 랭킹!
+                        st.markdown("**2. 오늘 매장 전체 트래픽을 결정한 핵심 요인 (종합 가중치 Top 10):**")
                         if hasattr(ai_model, 'feature_importances_'):
                             
                             base_weights = ai_model.feature_importances_
-                            # ✨ 선택한 구역의 데이터만 쏙 빼와서 계산합니다
-                            current_inputs = inputs_dict[selected_xai_zone].iloc[0].astype(float).values
+                            combined_weights = np.zeros_like(base_weights)
                             
-                            dynamic_weights = base_weights * current_inputs
+                            # 모든 타겟 구역(라면, 채소, 주류 등)의 입력값을 합산하여 
+                            # '현재 매장 전체'에 가해지는 요인들의 힘을 계산합니다.
+                            for z in target_zones:
+                                current_inputs = inputs_dict[z].iloc[0].astype(float).values
+                                combined_weights += (base_weights * current_inputs)
                             
-                            total_weight = dynamic_weights.sum()
+                            # 100% 비율로 환산
+                            total_weight = combined_weights.sum()
                             if total_weight > 0:
-                                dynamic_weights = dynamic_weights / total_weight
+                                combined_weights = combined_weights / total_weight
                                 
-                            imp_df = pd.DataFrame({'Feature': features, 'Importance': dynamic_weights})
-                            imp_df = imp_df[imp_df['Importance'] > 0].sort_values('Importance', ascending=False).head(5)
+                            imp_df = pd.DataFrame({'Feature': features, 'Importance': combined_weights})
+                            
+                            # 모든 구역과 날씨/요일이 다 나올 수 있도록 Top 10까지 보여줍니다.
+                            imp_df = imp_df[imp_df['Importance'] > 0].sort_values('Importance', ascending=False).head(10)
                             
                             bar_chart = alt.Chart(imp_df).mark_bar(color='#F59E0B', cornerRadiusEnd=4).encode(
-                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='결정 기여도 (Dynamic Weight)')),
+                                x=alt.X('Importance:Q', axis=alt.Axis(format='%', title='종합 결정 기여도 (Dynamic Weight)')),
                                 y=alt.Y('Feature:N', sort='-x', title=''),
                                 tooltip=['Feature', alt.Tooltip('Importance:Q', format='.1%')]
-                            ).properties(height=200)
+                            ).properties(height=250)
                             st.altair_chart(bar_chart, use_container_width=True)
-                            st.caption(f"💡 위 차트는 점장님이 선택하신 조건에서 AI가 **{selected_xai_zone}** 구역의 트래픽을 계산할 때 어떤 변수를 가장 유심히 보았는지 증명합니다.")
+                            st.caption("💡 위 차트는 점장님이 선택하신 요일/날씨 조건 하에서, **매장 내 주요 구역들의 파워와 외부 요인들이 종합적으로 어떻게 순위를 다투는지** 보여줍니다.")
                             
                     with col_xai2:
-                        # 증명 3: AI 뇌로 들어간 실제 수학적 변환 데이터
-                        st.markdown("**3. AI 연산기로 전송된 수학적 텐서(Tensor) 데이터:**")
-                        # ✨ 표 데이터도 선택한 구역에 맞춰서 실시간으로 바뀝니다
-                        st.dataframe(inputs_dict[selected_xai_zone].T.rename(columns={0: 'Value'}), height=230)
-                        st.caption("💡 텍스트(예: 비, 일요일)가 AI가 읽을 수 있는 0과 1의 Matrix로 자동 변환되어 주입되었습니다.")
+                        st.markdown("**3. AI 연산기로 전송된 수학적 텐서(Tensor) 통합 데이터:**")
+                        # 증명용 표도 모든 구역에 불이 켜진(1) 통합 상태로 보여줍니다.
+                        combined_input = inputs_dict[target_zones[0]].copy()
+                        for z in target_zones[1:]:
+                            combined_input[f'zone_{z}'] = 1 
+                            
+                        st.dataframe(combined_input.T.rename(columns={0: 'Value'}), height=280)
+                        st.caption("💡 모든 타겟 구역의 조건과 날씨/휴일 정보가 0과 1의 Matrix로 통합 변환되어 주입되었습니다.")
 
                 # 기존 트래픽 곡선 그리기 로직
                 try:
