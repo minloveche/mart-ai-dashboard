@@ -1096,19 +1096,21 @@ elif menu == "Future Heatmap (LSTM)":
             st.info(f"ℹ️ {target_time_label} 예측: {future_weather} 환경에서 주요 결제 및 식품 코너 혼잡도가 높게 유지될 것으로 분석됩니다.")
 
 # ✨ [기능 유지] 레이아웃 시뮬레이터 (수학적 시뮬레이션 + Gemini AI)
+# ✨ [기능 복구 완료] 레이아웃 시뮬레이터 (수학적 시뮬레이션 + Gemini AI)
 elif menu == "Layout Simulator":
     st.title("Layout Simulator")
+
     if df_all is not None:
         col1, col2 = st.columns(2)
         zone_list = list(ZONES.keys())
-        with col1: swap_a = st.selectbox("Target Zone A", zone_list, index=0)
-        with col2: swap_b = st.selectbox("Target Zone B", zone_list, index=1)
+        with col1: swap_a = st.selectbox("Target Zone A", zone_list, index=zone_list.index('라면') if '라면' in zone_list else 0)
+        with col2: swap_b = st.selectbox("Target Zone B", zone_list, index=zone_list.index('주류') if '주류' in zone_list else 1)
 
         if swap_a == swap_b: st.warning("Please select distinct zones.")
         else:
             if st.button("Run Simulation", use_container_width=True):
                 with st.spinner("Processing layout changes..."):
-                    # 거리 기반 시뮬레이션 로직
+                    
                     orig_centers = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) for node in ZONES}
                     sim_centers = orig_centers.copy()
                     sim_centers[swap_a], sim_centers[swap_b] = orig_centers[swap_b], orig_centers[swap_a]
@@ -1122,76 +1124,226 @@ elif menu == "Layout Simulator":
                     
                     all_flows = flow_df.groupby(['zone', 'next_zone']).size().reset_index(name='weight')
                     sim_flows = all_flows.copy()
+                    
                     zone_popularity = df_all['zone'].value_counts().to_dict()
                     sim_zone_pop = zone_popularity.copy()
 
+                    def calc_dist(p1, p2): return math.hypot(p1[0]-p2[0], p1[1]-p2[1])
+                    
                     for idx, row in sim_flows.iterrows():
                         u, v = row['zone'], row['next_zone']
                         if u in sim_centers and v in sim_centers:
-                            old_d = math.hypot(orig_centers[u][0]-orig_centers[v][0], orig_centers[u][1]-orig_centers[v][1])
-                            new_d = math.hypot(sim_centers[u][0]-sim_centers[v][0], sim_centers[u][1]-sim_centers[v][1])
+                            old_d = calc_dist(orig_centers[u], orig_centers[v])
+                            new_d = calc_dist(sim_centers[u], sim_centers[v])
+                            
                             if old_d != new_d and old_d > 0 and new_d > 0:
                                 ratio = max(0.5, min(old_d / new_d, 2.0))
-                                diff = (row['weight'] * ratio) - row['weight']
-                                sim_flows.at[idx, 'weight'] = int(row['weight'] * ratio)
-                                sim_zone_pop[u] += diff; sim_zone_pop[v] += diff
-
-                    # 시각화 렌더링
-                    st.markdown("#### Impact Analysis")
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric(f"Zone: {swap_a}", f"{int(sim_zone_pop[swap_a]):,}", f"{int(sim_zone_pop[swap_a]-zone_popularity[swap_a]):,}")
-                    c2.metric(f"Zone: {swap_b}", f"{int(sim_zone_pop[swap_b]):,}", f"{int(sim_zone_pop[swap_b]-zone_popularity[swap_b]):,}")
+                                new_weight = row['weight'] * ratio
+                                diff = new_weight - row['weight']
+                                
+                                sim_flows.at[idx, 'weight'] = int(new_weight)
+                                sim_zone_pop[u] = sim_zone_pop.get(u, 0) + diff
+                                sim_zone_pop[v] = sim_zone_pop.get(v, 0) + diff
                     
-                    fig_sim, ax_sim = plt.subplots(figsize=(10, 7), dpi=150)
-                    fig_sim.patch.set_facecolor('#0F172A'); ax_sim.set_facecolor('#0F172A')
-                    if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
+                    zones_data = []
+                    for k in ZONES.keys():
+                        orig_val = zone_popularity.get(k, 0)
+                        sim_val = int(sim_zone_pop.get(k, 0))
+                        diff = sim_val - orig_val
+                        zones_data.append({'Zone': k, 'Visits': max(0, sim_val), 'Variance': diff})
+                        
+                    df_zones_sim = pd.DataFrame(zones_data).sort_values('Visits', ascending=False)
+
+                    def get_color(row):
+                        if row['Zone'] in [swap_a, swap_b]: return '#8B5CF6' 
+                        elif row['Variance'] > 0: return '#10B981' 
+                        elif row['Variance'] < 0: return '#F43F5E' 
+                        else: return '#334155' 
+                        
+                    df_zones_sim['Color'] = df_zones_sim.apply(get_color, axis=1)
+                    
+                    st.markdown("#### Impact Analysis")
+                    sim_a_traffic = int(sim_zone_pop.get(swap_a, 0))
+                    sim_b_traffic = int(sim_zone_pop.get(swap_b, 0))
+                    diff_a = sim_a_traffic - zone_popularity.get(swap_a, 0)
+                    diff_b = sim_b_traffic - zone_popularity.get(swap_b, 0)
+                    
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                    metric_col1.metric(f"Zone: {swap_a}", f"{sim_a_traffic:,}", f"{diff_a:,}")
+                    metric_col2.metric(f"Zone: {swap_b}", f"{sim_b_traffic:,}", f"{diff_b:,}")
+                    
+                    other_diffs = {k: v for k, v in zip(df_zones_sim['Zone'], df_zones_sim['Variance']) if k not in [swap_a, swap_b]}
+                    top_gainer = max(other_diffs, key=other_diffs.get) if other_diffs else None
+                    top_gainer_diff = other_diffs.get(top_gainer, 0) if top_gainer else 0
+                    
+                    if top_gainer and top_gainer_diff > 0:
+                        metric_col3.metric(f"Primary Beneficiary: {top_gainer}", f"{int(sim_zone_pop.get(top_gainer, 0)):,}", f"{top_gainer_diff:,}")
+                    else:
+                        metric_col3.metric("Spillover Impact", "N/A", "Distance decay")
+                    
+                    st.markdown("<br>#### Post-Simulation Distribution", unsafe_allow_html=True)
+                    bars = alt.Chart(df_zones_sim).mark_bar(cornerRadiusEnd=3, height=15).encode(
+                        x=alt.X('Visits:Q', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        y=alt.Y('Zone:N', sort='-x', title='', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        color=alt.Color('Color:N', scale=None, legend=None),
+                        tooltip=['Zone', 'Visits', 'Variance']
+                    )
+                    st.altair_chart(bars.properties(height=alt.Step(22)), use_container_width=True)
+
+                    st.markdown("#### Simulated Flow Graph")
+                    top_100_sim_flows = sim_flows.sort_values('weight', ascending=False).head(100).copy()
                     
                     G_sim = nx.DiGraph()
-                    for z in ZONES: G_sim.add_node(z)
-                    for _, r in sim_flows.sort_values('weight', ascending=False).head(50).iterrows(): G_sim.add_edge(r['zone'], r['next_zone'], weight=r['weight'])
+                    for zone_name in ZONES.keys(): G_sim.add_node(zone_name)
+                    for _, row in top_100_sim_flows.iterrows(): G_sim.add_edge(row['zone'], row['next_zone'], weight=row['weight'])
                     
-                    nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=500, node_color='#8B5CF6', edgecolors='#F8FAFC')
-                    nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, edge_color='#6366F1', alpha=0.5, arrowsize=10)
-                    nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=8, font_color='#F8FAFC')
-                    ax_sim.axis('off'); st.pyplot(fig_sim)
+                    fig_sim, ax_sim = plt.subplots(figsize=(12, 9), dpi=150)
+                    fig_sim.patch.set_facecolor('#0F172A')
+                    ax_sim.set_facecolor('#0F172A')
+                    if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
+                    else: ax_sim.set_xlim(0, 663); ax_sim.set_ylim(500, 0); ax_sim.invert_yaxis()
+                    
+                    max_pop = max(list(sim_zone_pop.values())) if sim_zone_pop.values() else 1
+                    
+                    node_colors = []
+                    for node in G_sim.nodes():
+                        diff = int(sim_zone_pop.get(node, 0)) - zone_popularity.get(node, 0)
+                        if node in [swap_a, swap_b]: node_colors.append('#8B5CF6')
+                        elif diff > 0: node_colors.append('#10B981')
+                        elif diff < 0: node_colors.append('#F43F5E')
+                        else: node_colors.append('#CBD5E1')
+                    
+                    node_sizes = [(sim_zone_pop.get(node, 0) / max_pop) * 1500 + 100 for node in G_sim.nodes()]
+                    max_weight = max([G_sim[u][v]['weight'] for u, v in G_sim.edges()]) if G_sim.edges() else 1
+                    edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
+                    
+                    nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2)
+                    nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.2')
+                    nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=9, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.9, edgecolor='#334155', boxstyle='round,pad=0.3'))
+                    
+                    ax_sim.axis('off')
+                    st.pyplot(fig_sim, facecolor='#0F172A')
 
-                    # Gemini AI 리포트 생성
+                    st.markdown("<br>#### 🤖 AI Layout Insight Report", unsafe_allow_html=True)
                     if HAS_GENAI:
-                        with st.spinner("AI가 레이아웃 변경에 따른 쇼핑 심리 변화를 분석 중..."):
+                        with st.spinner("AI가 고객 동선 변화 심리를 분석 중입니다..."):
                             try:
                                 if "GEMINI_API_KEY" in st.secrets:
                                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                    model = genai.GenerativeModel('gemini-pro')
-                                    prompt = f"마트 '{swap_a}'와 '{swap_b}' 위치 변경 시뮬레이션 결과에 대해 리테일 공간 전문가로서 3가지 핵심 인사이트를 요약해줘."
-                                    res = model.generate_content(prompt)
-                                    st.markdown(f'<div style="background-color:#1E293B; padding:20px; border-radius:8px; border-left:4px solid #38BDF8;">{res.text}</div>', unsafe_allow_html=True)
-                            except: pass
+                                else:
+                                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
+                                
+                                ai_model_name = 'gemini-pro'
+                                try:
+                                    for m in genai.list_models():
+                                        if 'generateContent' in m.supported_generation_methods:
+                                            if 'flash' in m.name.lower():
+                                                ai_model_name = m.name
+                                                break
+                                except: pass
+                                
+                                model = genai.GenerativeModel(ai_model_name)
+                                top_gainer_text = f"'{top_gainer}' 구역 (예상 변화량: {top_gainer_diff:+,}명)" if top_gainer else "뚜렷한 이득을 본 주변 구역 없음"
+                                
+                                ai_prompt = f"""
+                                당신은 데이터 기반 리테일 공간 디자이너입니다.
+                                마트에서 '{swap_a}' 구역과 '{swap_b}' 구역의 위치를 맞바꾸는 시뮬레이션을 실행했습니다.
+                                거리 기반 수학적 시뮬레이션 결과:
+                                - {swap_a} 트래픽 변화: {diff_a:+,}명
+                                - {swap_b} 트래픽 변화: {diff_b:+,}명
+                                - 가장 큰 반사이익(Spillover)을 얻은 주변 구역: {top_gainer_text}
 
-# ✨ [기능 유지] LLM 어드바이저 (대화형 인터페이스)
+                                이 수학적 데이터를 바탕으로, 실제 고객의 쇼핑 심리와 동선 변화를 탐색하여 다음을 브리핑해주세요:
+                                1. 매대 변경 후 예상되는 고객 동선 흐름의 변화 (왜 이렇게 움직일지 심리적 이유)
+                                2. 이 레이아웃으로 인해 발생할 새로운 연관 구매(Cross-selling) 기회
+                                3. 현장 적용 시 점장님이 주의해야 할 병목현상 또는 리스크
+                                
+                                매우 전문적이고 확신에 찬 어조로, 마크다운 리스트 형식으로 깔끔하고 구체적이게 답변하세요.
+                                """
+                                response = model.generate_content(ai_prompt)
+                                st.markdown(f"""
+                                <div style="background-color: #1E293B; padding: 20px; border-radius: 8px; border-left: 4px solid #38BDF8; color: #F8FAFC;">
+                                    {response.text}
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                            except ValueError as ve:
+                                st.warning(f"서버 보안 설정 필요: {ve}")
+                            except Exception as e:
+                                st.error(f"AI 인사이트를 불러올 수 없습니다. 오류: {e}")
+                    else:
+                        st.info("AI 모듈이 설치되어 있지 않습니다.")
+
+# ✨ [기능 복구 완료] LLM 어드바이저 (실시간 데이터 컨텍스트 포함)
 elif menu == "LLM Assistant":
     st.title("LLM Operations Advisor")
     if not HAS_GENAI: 
-        st.error("AI 모듈이 설치되어 있지 않습니다.")
+        st.error("google-generativeai module not found.")
     else:
-        try:
-            if "GEMINI_API_KEY" in st.secrets:
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                system_context = f"당신은 리테일 매장 어드바이저입니다. 현재 가장 붐비는 구역은 {df_all['zone'].value_counts().index[0] if df_all is not None else 'N/A'}입니다."
-                model = genai.GenerativeModel('gemini-pro', system_instruction=system_context)
+        with st.container():
+            try:
+                if "GEMINI_API_KEY" in st.secrets:
+                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                else:
+                    raise ValueError("Secrets 설정에 GEMINI_API_KEY가 없습니다.")
+                
+                ai_model_name = 'gemini-pro'
+                try:
+                    for m in genai.list_models():
+                        if 'generateContent' in m.supported_generation_methods:
+                            if 'flash' in m.name.lower():
+                                ai_model_name = m.name
+                                break
+                except: pass
+                
+                # 원본에 있던 [핵심] 시스템 컨텍스트 동적 수집 기능
+                system_context = (
+                    "당신은 리테일 매장의 공간 분석 및 운영 어드바이저입니다.\n"
+                    "다음은 현재 대시보드에서 분석 중인 실시간 데이터 맥락입니다:\n"
+                )
+                
+                if df_all is not None and not df_all.empty:
+                    total_visitors = df_all['real_user_id'].nunique()
+                    top_zone = df_all['zone'].value_counts().index[0]
+                    total_stay_hrs = df_all['stay_sec'].sum() / 3600 if 'stay_sec' in df_all.columns else 0
+                    
+                    system_context += f"- 누적 방문객 수: {total_visitors:,.0f}명\n"
+                    system_context += f"- 총 체류 시간: {total_stay_hrs:,.0f}시간\n"
+                    system_context += f"- 가장 인기 있는 밀집 구역(Top Zone): {top_zone}\n"
+                    system_context += f"- 매장 내 관리 구역 목록: {', '.join(list(ZONES.keys()))}\n"
+                
+                if df_os is not None and not df_os.empty:
+                    android_count = df_os[df_os['os'] == 'Android']['count'].sum()
+                    iphone_count = df_os[df_os['os'] == 'iPhone']['count'].sum()
+                    system_context += f"- 고객 단말기 OS 비율: Android {android_count}대, iPhone {iphone_count}대\n"
+                
+                system_context += (
+                    "\n위 데이터를 바탕으로 매장 레이아웃 최적화, 수요 예측, 동선 개선 등에 대한 질문에 "
+                    "구체적이고 전문적인 솔루션을 제공해 주세요."
+                )
+                
+                model = genai.GenerativeModel(
+                    model_name=ai_model_name,
+                    system_instruction=system_context
+                )
                 
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
                 for msg in st.session_state.chat_history:
                     with st.chat_message(msg["role"]): st.markdown(msg["content"])
                     
-                if prompt := st.chat_input("점장님, 궁금하신 점을 물어보세요..."):
+                if prompt := st.chat_input("Ask advisor..."):
                     st.session_state.chat_history.append({"role": "user", "content": prompt})
                     with st.chat_message("user"): st.markdown(prompt)
                     with st.chat_message("assistant"):
-                        res = model.generate_content(prompt)
-                        st.markdown(res.text)
-                        st.session_state.chat_history.append({"role": "assistant", "content": res.text})
-        except Exception as e: st.error(f"API 연결 오류: {e}")
-
+                        with st.spinner("데이터 맥락을 해석하여 답변을 생성 중입니다..."):
+                            response = model.generate_content(prompt)
+                            st.markdown(response.text)
+                            st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                            
+            except ValueError as ve:
+                st.warning(f"서버 보안 설정 필요: {ve}")
+            except Exception as e: 
+                st.error(f"API 연결에 실패했습니다. 오류: {e}")
 # ✨ [기능 유지] 센서 맵 (하드웨어 배치도)
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
