@@ -11,4 +11,4 @@ fastparquet
 google-generativeai
 networkx
 xgboost
-tensorflow
+tensorflow-cpu==2.15.0
