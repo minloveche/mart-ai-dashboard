@@ -11,4 +11,4 @@ fastparquet
 google-generativeai
 networkx
 xgboost
-
+tensorflow-cpu
