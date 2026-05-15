@@ -1286,7 +1286,7 @@ elif menu == "Layout Simulator":
                                 else:
                                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                                     # 구형 모델 대신 최신/가벼운 모델로 변경
-                                    model = genai.GenerativeModel('gemini-1.5-flash')
+                                    model = genai.GenerativeModel('gemini-pro')
                                     prompt = f"""
                                     당신은 마트 데이터 분석 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
                                     공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
