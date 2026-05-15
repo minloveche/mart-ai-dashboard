@@ -1276,7 +1276,7 @@ elif menu == "Layout Simulator":
                         else:
                             st.write("트래픽이 크게 감소한 주변 구역이 없습니다.")
                             
-                    # Gemini AI의 하이브리드 리포트
+                   # Gemini AI의 하이브리드 리포트
                     if HAS_GENAI:
                         st.markdown("<br>", unsafe_allow_html=True)
                         with st.spinner("Gemini AI가 하이브리드 데이터를 기반으로 전략 리포트를 생성 중입니다..."):
@@ -1285,17 +1285,29 @@ elif menu == "Layout Simulator":
                                     st.error("🔑 스트림릿 설정(Secrets)에 'GEMINI_API_KEY'가 등록되지 않았습니다! Settings > Secrets 탭을 확인해 주세요.")
                                 else:
                                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                    # 구형 모델 대신 최신/가벼운 모델로 변경
-                                    model = genai.GenerativeModel('gemini-pro')
-                                    prompt = f"""
-                                    당신은 마트 데이터 분석 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
-                                    공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
-                                    그 결과 {swap_a}는 {diff_a:+.1f}명, {swap_b}는 {diff_b:+.1f}명의 트래픽 변화가 예상됩니다.
-                                    이 하이브리드 시뮬레이션 결과(거리 변화뿐만 아니라 기상/요일 조건까지 반영된 결과)가 점장님에게 주는 전략적 의미와 
-                                    현장 적용 시 주의사항을 리테일 관점에서 전문적으로 분석해줘.
-                                    """
-                                    res = model.generate_content(prompt)
-                                    st.info(res.text)
+                                    
+                                    # 🌟 [핵심 해결책] 하드코딩 대신 사용 가능한 최신 모델을 자동 검색!
+                                    valid_model_name = None
+                                    for m in genai.list_models():
+                                        if 'generateContent' in m.supported_generation_methods:
+                                            valid_model_name = m.name # 사용 가능한 아무 모델이나 먼저 확보
+                                            if 'flash' in m.name.lower() or 'pro' in m.name.lower():
+                                                break # 최신형(flash, pro)이 보이면 바로 선택
+                                                
+                                    if valid_model_name is None:
+                                        st.error("구글 서버에서 사용 가능한 Gemini 모델을 찾을 수 없습니다.")
+                                    else:
+                                        # 찾아낸 최적의 모델로 자동 연결
+                                        model = genai.GenerativeModel(valid_model_name)
+                                        prompt = f"""
+                                        당신은 마트 데이터 분석 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
+                                        공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
+                                        그 결과 {swap_a}는 {diff_a:+.1f}명, {swap_b}는 {diff_b:+.1f}명의 트래픽 변화가 예상됩니다.
+                                        이 하이브리드 시뮬레이션 결과(거리 변화뿐만 아니라 기상/요일 조건까지 반영된 결과)가 점장님에게 주는 전략적 의미와 
+                                        현장 적용 시 주의사항을 리테일 관점에서 전문적으로 분석해줘.
+                                        """
+                                        res = model.generate_content(prompt)
+                                        st.info(res.text)
                             except Exception as e:
                                 st.error(f"🤖 AI 에러 상세 원인: {e}")
 
