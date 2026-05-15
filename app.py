@@ -1275,15 +1275,18 @@ elif menu == "Layout Simulator":
                                 """, unsafe_allow_html=True)
                         else:
                             st.write("트래픽이 크게 감소한 주변 구역이 없습니다.")
-
+                            
                     # Gemini AI의 하이브리드 리포트
                     if HAS_GENAI:
                         st.markdown("<br>", unsafe_allow_html=True)
                         with st.spinner("Gemini AI가 하이브리드 데이터를 기반으로 전략 리포트를 생성 중입니다..."):
                             try:
-                                if "GEMINI_API_KEY" in st.secrets:
+                                if "GEMINI_API_KEY" not in st.secrets:
+                                    st.error("🔑 스트림릿 설정(Secrets)에 'GEMINI_API_KEY'가 등록되지 않았습니다! Settings > Secrets 탭을 확인해 주세요.")
+                                else:
                                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                    model = genai.GenerativeModel('gemini-pro')
+                                    # 구형 모델 대신 최신/가벼운 모델로 변경
+                                    model = genai.GenerativeModel('gemini-1.5-flash')
                                     prompt = f"""
                                     당신은 마트 데이터 분석 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
                                     공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
@@ -1293,7 +1296,8 @@ elif menu == "Layout Simulator":
                                     """
                                     res = model.generate_content(prompt)
                                     st.info(res.text)
-                            except: st.error("AI 리포트를 생성하는 중 오류가 발생했습니다.")
+                            except Exception as e:
+                                st.error(f"🤖 AI 에러 상세 원인: {e}")
 
 # ✨ [기능 복구 완료] LLM 어드바이저 (실시간 데이터 컨텍스트 포함)
 elif menu == "LLM Assistant":
