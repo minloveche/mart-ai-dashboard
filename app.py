@@ -1098,31 +1098,33 @@ elif menu == "Future Heatmap (LSTM)":
 # ✨ [기능 유지] 레이아웃 시뮬레이터 (수학적 시뮬레이션 + Gemini AI)
 # ✨ [기능 복구 완료] 레이아웃 시뮬레이터 (수학적 시뮬레이션 + Gemini AI)
 # ✨ [하이브리드 업그레이드] Layout Simulator (XGBoost + 공간 알고리즘)
+# ✨ [완성판] Layout Simulator (동선 복구 + 전문 리포트 추가)
 elif menu == "Layout Simulator":
     st.title("Hybrid Layout Simulator (XGBoost + Spatial)")
-    st.markdown("상황(날씨/요일)별 예측치에 공간 거리 변화율을 적용하여 **가장 정밀한 동선 변화**를 계산합니다.")
+    st.markdown("XGBoost의 기상/요일 예측치에 공간 물리 엔진을 결합하여 **가장 정밀한 매대 교체 효과**를 시뮬레이션합니다.")
 
     if df_all is not None:
-        # 1단계: 상황 설정 (XGBoost 입력용)
-        with st.expander("🛠️ 1. 시뮬레이션 환경 조건 설정", expanded=True):
-            c1, c2, c3 = st.columns(3)
-            sim_weather = c1.selectbox("가상 날씨", ["Sunny", "Cloudy", "Rainy"], key="sim_w")
-            sim_day = c2.selectbox("가상 요일", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=5, key="sim_d")
-            sim_holiday = c3.selectbox("공휴일 여부", ["No", "Yes"], key="sim_h")
-
-        # 2단계: 매대 교체 선택
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_s1, col_s2 = st.columns(2)
-        zone_list = list(ZONES.keys())
-        swap_a = col_s1.selectbox("교체 대상 구역 A", zone_list, index=zone_list.index('라면') if '라면' in zone_list else 0)
-        swap_b = col_s2.selectbox("교체 대상 구역 B", zone_list, index=zone_list.index('주류') if '주류' in zone_list else 1)
+        # 🛠️ 1단계: 조건 및 교체 대상 설정
+        with st.container():
+            col_in1, col_in2 = st.columns([1.5, 1])
+            with col_in1:
+                with st.expander("⚙️ 시뮬레이션 환경 조건 (XGBoost 기반)", expanded=True):
+                    c1, c2, c3 = st.columns(3)
+                    sim_weather = c1.selectbox("가상 날씨", ["Sunny", "Cloudy", "Rainy"], key="sim_w")
+                    sim_day = c2.selectbox("가상 요일", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=5, key="sim_d")
+                    sim_holiday = c3.selectbox("공휴일 여부", ["No", "Yes"], key="sim_h")
+            with col_in2:
+                with st.expander("🔄 매대 교체 대상 선택", expanded=True):
+                    zone_list = list(ZONES.keys())
+                    swap_a = st.selectbox("구역 A", zone_list, index=zone_list.index('라면') if '라면' in zone_list else 0)
+                    swap_b = st.selectbox("구역 B", zone_list, index=zone_list.index('주류') if '주류' in zone_list else 1)
 
         if swap_a == swap_b: 
             st.warning("서로 다른 두 구역을 선택해 주세요.")
         else:
             if st.button("🚀 하이브리드 시뮬레이션 가동", use_container_width=True, type="primary"):
-                with st.spinner("XGBoost와 물리 엔진이 연동 중입니다..."):
-                    # [A] XGBoost 기반 베이스라인 예측 (현재 환경 조건 적용)
+                with st.spinner("XGBoost 예측치와 공간 물리 엔진을 연동하여 분석 중입니다..."):
+                    # --- [A] XGBoost 기반 베이스라인 예측 (현재 환경 조건 적용) ---
                     try:
                         ai_model = joblib.load("ai_forecaster.pkl")
                         features = joblib.load("ai_features.pkl")
@@ -1136,13 +1138,12 @@ elif menu == "Layout Simulator":
                             if f"zone_{zone_name}" in input_data.columns: input_data[f"zone_{zone_name}"] = 1
                             return ai_model.predict(input_data)[0]
 
-                        # 모든 구역의 예측치 계산
                         zone_predictions = {z: get_xgb_pred(z) for z in ZONES.keys()}
                     except:
                         # 모델 로드 실패 시 평균 데이터로 대체
                         zone_predictions = df_all['zone'].value_counts().to_dict()
 
-                    # [B] 수학적 거리 변화율 계산
+                    # --- [B] 수학적 거리 변화율 계산 및 동선 생성 ---
                     orig_centers = {node: ((ZONES[node]['x_min']+ZONES[node]['x_max'])/2, (ZONES[node]['y_min']+ZONES[node]['y_max'])/2) for node in ZONES}
                     sim_centers = orig_centers.copy()
                     sim_centers[swap_a], sim_centers[swap_b] = orig_centers[swap_b], orig_centers[swap_a]
@@ -1153,7 +1154,9 @@ elif menu == "Layout Simulator":
                         flow_df['next_zone'] = flow_df.groupby('real_user_id')['zone'].shift(-1)
                     
                     flow_counts = flow_df.dropna(subset=['next_zone']).groupby(['zone', 'next_zone']).size().reset_index(name='weight')
+                    
                     sim_zone_pop = zone_predictions.copy()
+                    top_flows_data = []
 
                     for idx, row in flow_counts.iterrows():
                         u, v = row['zone'], row['next_zone']
@@ -1161,56 +1164,136 @@ elif menu == "Layout Simulator":
                             old_d = math.hypot(orig_centers[u][0]-orig_centers[v][0], orig_centers[u][1]-orig_centers[v][1])
                             new_d = math.hypot(sim_centers[u][0]-sim_centers[v][0], sim_centers[u][1]-sim_centers[v][1])
                             if old_d != new_d and old_d > 0 and new_d > 0:
-                                ratio = max(0.6, min(old_d / new_d, 1.8)) # 거리에 따른 방문 확률 변화율
-                                diff = (zone_predictions.get(u, 0) * (ratio - 1)) * 0.1 # 가중치 조정
-                                sim_zone_pop[u] += diff; sim_zone_pop[v] += diff
+                                # 거리에 따른 방문 확률 변화율 (물리 엔진)
+                                ratio = max(0.6, min(old_d / new_d, 1.8)) 
+                                new_weight = row['weight'] * ratio
+                                diff = new_weight - row['weight']
+                                
+                                sim_zone_pop[u] += diff * 0.1 # 유입 가중치 반영
+                                sim_zone_pop[v] += diff * 0.1
+                                
+                                top_flows_data.append({'zone': u, 'next_zone': v, 'weight': new_weight})
+                            else:
+                                top_flows_data.append({'zone': u, 'next_zone': v, 'weight': row['weight']})
 
-                    # 3단계: 결과 시각화
-                    st.markdown("#### 📊 Hybrid Impact Analysis")
-                    st.caption(f"조건: {sim_weather} | {sim_day} | 공휴일({sim_holiday}) 환경에서의 예측값")
-                    
-                    m1, m2, m3 = st.columns(3)
-                    diff_a = sim_zone_pop[swap_a] - zone_predictions[swap_a]
-                    diff_b = sim_zone_pop[swap_b] - zone_predictions[swap_b]
-                    
-                    m1.metric(f"{swap_a} 예측", f"{int(sim_zone_pop[swap_a]):,}명", f"{diff_a:+,.1f}명")
-                    m2.metric(f"{swap_b} 예측", f"{int(sim_zone_pop[swap_b]):,}명", f"{diff_b:+,.1f}명")
-                    m3.metric("시뮬레이션 신뢰도", "High", "XGB+Spatial")
-
-                    fig_sim, ax_sim = plt.subplots(figsize=(10, 7), dpi=150)
-                    fig_sim.patch.set_facecolor('#0F172A'); ax_sim.set_facecolor('#0F172A')
-                    if os.path.exists('map_image.jpg'): ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
-                    
+                    # 렌더링용 G 생성
                     G_sim = nx.DiGraph()
                     for z in ZONES: G_sim.add_node(z)
                     
-                    node_colors = []
-                    for node in G_sim.nodes():
-                        d = sim_zone_pop[node] - zone_predictions[node]
-                        if node in [swap_a, swap_b]: node_colors.append('#8B5CF6')
-                        elif d > 0.5: node_colors.append('#10B981')
-                        elif d < -0.5: node_colors.append('#F43F5E')
-                        else: node_colors.append('#334155')
-                    
-                    nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=600, node_color=node_colors, edgecolors='#F8FAFC')
-                    nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=8, font_color='#F8FAFC')
-                    ax_sim.axis('off'); st.pyplot(fig_sim)
+                    # 가중치 순으로 상위 동선만 추가 (너무 많으면 지저분함)
+                    sim_flows_df = pd.DataFrame(top_flows_data).sort_values('weight', ascending=False).head(70)
+                    for _, r in sim_flows_df.iterrows():
+                        G_sim.add_edge(r['zone'], r['next_zone'], weight=r['weight'])
 
-                    # [C] Gemini AI의 하이브리드 리포트
+                    # --- [C] 시각화 및 리포트 섹션 ---
+                    st.markdown("<br>#### 🔮 Simulation Result Map (with Predicted Flows)", unsafe_allow_html=True)
+                    st.caption(f"예측 조건: {sim_weather} | {sim_day} | 공휴일({sim_holiday}) -> {swap_a} ↔ {swap_b} 교체 시")
+                    
+                    map_col, metric_col = st.columns([2.5, 1])
+                    
+                    with map_col:
+                        fig_sim, ax_sim = plt.subplots(figsize=(10, 7), dpi=150)
+                        fig_sim.patch.set_facecolor('#0F172A'); ax_sim.set_facecolor('#0F172A')
+                        if os.path.exists('map_image.jpg'): 
+                            ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
+                        
+                        # 노드 색상 세팅
+                        node_colors = []
+                        for node in G_sim.nodes():
+                            d = sim_zone_pop[node] - zone_predictions[node]
+                            if node in [swap_a, swap_b]: node_colors.append('#8B5CF6') # 대상은 보라색
+                            elif d > 0.5: node_colors.append('#10B981') # 증가 초록
+                            elif d < -0.5: node_colors.append('#F43F5E') # 감소 빨강
+                            else: node_colors.append('#334155') # 변화없음 회색
+                        
+                        max_weight = sim_flows_df['weight'].max() if not sim_flows_df.empty else 1
+                        edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
+
+                        # ✨ [복구 핵심] 동선 화살표 그리기 코드 추가
+                        nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.15')
+                        
+                        # 노드 및 라벨
+                        nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=600, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1)
+                        nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=8, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
+                        
+                        ax_sim.axis('off'); st.pyplot(fig_sim)
+
+                    with metric_col:
+                        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+                        diff_a = sim_zone_pop[swap_a] - zone_predictions[swap_a]
+                        diff_b = sim_zone_pop[swap_b] - zone_predictions[swap_b]
+                        st.metric(f"{swap_a} 예측", f"{int(sim_zone_pop[swap_a]):,}명", f"{diff_a:+,.1f}명", help="XGBoost 예측치에 물리 엔진 변화율을 적용한 최종 값")
+                        st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+                        st.metric(f"{swap_b} 예측", f"{int(sim_zone_pop[swap_b]):,}명", f"{diff_b:+,.1f}명")
+                        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+                        st.caption("🟢 초록: 트래픽 증가 구역\n\n🔴 빨강: 트래픽 감소 구역")
+
+                    # ✨ [신규] 전문 데이터 분석 리포트 섹션 추가
+                    st.markdown("<hr style='margin: 30px 0; border-color: #334155;'>", unsafe_allow_html=True)
+                    st.markdown("### 📊 시뮬레이션 심층 분석 보고서")
+                    
+                    rep_col1, rep_col2 = st.columns(2)
+                    
+                    with rep_col1:
+                        st.markdown("#### 🏆 주요 수혜(낙수 효과) 구역 Top 3")
+                        beneficiaries = []
+                        for node in ZONES.keys():
+                            if node not in [swap_a, swap_b]:
+                                diff = sim_zone_pop[node] - zone_predictions[node]
+                                if diff > 0: beneficiaries.append({'Zone': node, 'Diff': diff})
+                        
+                        if beneficiaries:
+                            df_ben = pd.DataFrame(beneficiaries).sort_values('Diff', ascending=False).head(3)
+                            for idx, row in df_ben.iterrows():
+                                st.markdown(f"""
+                                <div style="background-color: #1E293B; padding: 12px; border-radius: 6px; border-left: 3px solid #10B981; margin-bottom: 10px;">
+                                    <span style="color: #CBD5E1; font-size: 14px;">{idx+1}위</span>
+                                    <span style="color: #F8FAFC; font-weight: bold; font-size: 16px; margin-left: 10px;">{row['Zone']}</span>
+                                    <span style="color: #10B981; font-weight: bold; float: right;">+{row['Diff']:.1f}명</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.write("뚜렷한 반사이익을 얻은 주변 구역이 없습니다.")
+
+                    with rep_col2:
+                        st.markdown("#### ⚠️ 주의(트래픽 감소) 구역 Top 3")
+                        losers = []
+                        for node in ZONES.keys():
+                            if node not in [swap_a, swap_b]:
+                                diff = sim_zone_pop[node] - zone_predictions[node]
+                                if diff < 0: losers.append({'Zone': node, 'Diff': diff})
+                        
+                        if losers:
+                            df_los = pd.DataFrame(losers).sort_values('Diff', ascending=True).head(3)
+                            for idx, row in df_los.iterrows():
+                                st.markdown(f"""
+                                <div style="background-color: #1E293B; padding: 12px; border-radius: 6px; border-left: 3px solid #F43F5E; margin-bottom: 10px;">
+                                    <span style="color: #CBD5E1; font-size: 14px;">{idx+1}위</span>
+                                    <span style="color: #F8FAFC; font-weight: bold; font-size: 16px; margin-left: 10px;">{row['Zone']}</span>
+                                    <span style="color: #F43F5E; font-weight: bold; float: right;">{row['Diff']:.1f}명</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.write("트래픽이 크게 감소한 주변 구역이 없습니다.")
+
+                    # Gemini AI의 하이브리드 리포트
                     if HAS_GENAI:
-                        try:
-                            if "GEMINI_API_KEY" in st.secrets:
-                                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                model = genai.GenerativeModel('gemini-pro')
-                                prompt = f"""
-                                당신은 데이터 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
-                                공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
-                                결과적으로 {swap_a}는 {diff_a:+.1f}명, {swap_b}는 {diff_b:+.1f}명의 트래픽 변화가 예상됩니다.
-                                이 하이브리드 결과가 점장님에게 주는 전략적 의미를 리테일 관점에서 분석해줘.
-                                """
-                                res = model.generate_content(prompt)
-                                st.info(res.text)
-                        except: pass
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        with st.spinner("Gemini AI가 하이브리드 데이터를 기반으로 전략 리포트를 생성 중입니다..."):
+                            try:
+                                if "GEMINI_API_KEY" in st.secrets:
+                                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                    model = genai.GenerativeModel('gemini-pro')
+                                    prompt = f"""
+                                    당신은 마트 데이터 분석 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
+                                    공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
+                                    그 결과 {swap_a}는 {diff_a:+.1f}명, {swap_b}는 {diff_b:+.1f}명의 트래픽 변화가 예상됩니다.
+                                    이 하이브리드 시뮬레이션 결과(거리 변화뿐만 아니라 기상/요일 조건까지 반영된 결과)가 점장님에게 주는 전략적 의미와 
+                                    현장 적용 시 주의사항을 리테일 관점에서 전문적으로 분석해줘.
+                                    """
+                                    res = model.generate_content(prompt)
+                                    st.info(res.text)
+                            except: st.error("AI 리포트를 생성하는 중 오류가 발생했습니다.")
 
 # ✨ [기능 복구 완료] LLM 어드바이저 (실시간 데이터 컨텍스트 포함)
 elif menu == "LLM Assistant":
