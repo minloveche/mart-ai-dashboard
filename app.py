@@ -388,11 +388,11 @@ if menu == "Traffic Summary":
                                 
                                 if focus_zone != "전체 보기":
                                     if u == focus_zone or v == focus_zone:
-                                        rgba[3] = 0.95 
+                                        rgba[3] = 0.95 # ✨ [개선] 진하게 수정
                                     else:
                                         rgba = [0.4, 0.4, 0.4, 0.15] 
                                 else:
-                                    rgba[3] = max(0.2, weight / max_weight)
+                                    rgba[3] = 0.95 # ✨ [개선] 화살표 색을 진하게 고정
                                 rgba_colors.append(rgba)
                             
                             node_colors = []
@@ -407,7 +407,8 @@ if menu == "Traffic Summary":
                                 else:
                                     node_colors.append('#0EA5E9' if zone_popularity.get(node, 0) > (max_pop * 0.3) else '#334155')
 
-                            edge_widths = [(G[u][v]['weight'] / max_weight) * 5 + 0.8 for u, v in G.edges()]
+                            # ✨ [개선] 선의 두께(width)를 조금 더 굵게 상향 조정
+                            edge_widths = [(G[u][v]['weight'] / max_weight) * 7 + 1.5 for u, v in G.edges()]
                             
                             nx.draw_networkx_nodes(G, pos, ax=ax_flow, node_size=node_sizes, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1.2, alpha=0.95)
                             nx.draw_networkx_edges(G, pos, ax=ax_flow, width=edge_widths, edge_color=rgba_colors, arrowsize=18, connectionstyle='arc3,rad=0.2')
@@ -1095,10 +1096,7 @@ elif menu == "Future Heatmap (LSTM)":
             st.pyplot(fig)
             st.info(f"ℹ️ {target_time_label} 예측: {future_weather} 환경에서 주요 결제 및 식품 코너 혼잡도가 높게 유지될 것으로 분석됩니다.")
 
-# ✨ [기능 유지] 레이아웃 시뮬레이터 (수학적 시뮬레이션 + Gemini AI)
-# ✨ [기능 복구 완료] 레이아웃 시뮬레이터 (수학적 시뮬레이션 + Gemini AI)
-# ✨ [하이브리드 업그레이드] Layout Simulator (XGBoost + 공간 알고리즘)
-# ✨ [완성판] Layout Simulator (동선 복구 + 전문 리포트 추가)
+# ✨ [완성판] Layout Simulator (동선 복구 + 지색 개선 + 전문 리포트 추가)
 elif menu == "Layout Simulator":
     st.title("Hybrid Layout Simulator (XGBoost + Spatial)")
     st.markdown("XGBoost의 기상/요일 예측치에 공간 물리 엔진을 결합하여 **가장 정밀한 매대 교체 효과**를 시뮬레이션합니다.")
@@ -1193,9 +1191,10 @@ elif menu == "Layout Simulator":
                     
                     with map_col:
                         fig_sim, ax_sim = plt.subplots(figsize=(10, 7), dpi=150)
-                        fig_sim.patch.set_facecolor('#0F172A'); ax_sim.set_facecolor('#0F172A')
+                        # ✨ [개선] 배경을 흰색으로 변경하고 지도 선명도 강화
+                        fig_sim.patch.set_facecolor('#FFFFFF'); ax_sim.set_facecolor('#FFFFFF')
                         if os.path.exists('map_image.jpg'): 
-                            ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
+                            ax_sim.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.8) # alpha 상향
                         
                         # 노드 색상 세팅
                         node_colors = []
@@ -1207,13 +1206,13 @@ elif menu == "Layout Simulator":
                             else: node_colors.append('#334155') # 변화없음 회색
                         
                         max_weight = sim_flows_df['weight'].max() if not sim_flows_df.empty else 1
-                        edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 3 + 0.5 for u, v in G_sim.edges()]
+                        edge_widths = [(G_sim[u][v]['weight'] / max_weight) * 4 + 1.0 for u, v in G_sim.edges()] # 두께 상향
 
-                        # ✨ [복구 핵심] 동선 화살표 그리기 코드 추가
-                        nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.6, connectionstyle='arc3,rad=0.15')
+                        # 동선 화살표 그리기
+                        nx.draw_networkx_edges(G_sim, sim_centers, ax=ax_sim, width=edge_widths, edge_color='#6366F1', arrowsize=15, alpha=0.8, connectionstyle='arc3,rad=0.15')
                         
                         # 노드 및 라벨
-                        nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=600, node_color=node_colors, edgecolors='#F8FAFC', linewidths=1)
+                        nx.draw_networkx_nodes(G_sim, sim_centers, ax=ax_sim, node_size=600, node_color=node_colors, edgecolors='#334155', linewidths=1)
                         nx.draw_networkx_labels(G_sim, sim_centers, ax=ax_sim, font_family=plt.rcParams['font.family'], font_size=8, font_weight='bold', font_color='#F8FAFC', bbox=dict(facecolor='#1E293B', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
                         
                         ax_sim.axis('off'); st.pyplot(fig_sim)
@@ -1275,36 +1274,29 @@ elif menu == "Layout Simulator":
                                 """, unsafe_allow_html=True)
                         else:
                             st.write("트래픽이 크게 감소한 주변 구역이 없습니다.")
-                            
-                   # Gemini AI의 하이브리드 리포트
+
+                    # Gemini AI의 하이브리드 리포트
                     if HAS_GENAI:
                         st.markdown("<br>", unsafe_allow_html=True)
                         with st.spinner("Gemini AI가 하이브리드 데이터를 기반으로 전략 리포트를 생성 중입니다..."):
                             try:
                                 if "GEMINI_API_KEY" not in st.secrets:
-                                    st.error("🔑 스트림릿 설정(Secrets)에 'GEMINI_API_KEY'가 등록되지 않았습니다! Settings > Secrets 탭을 확인해 주세요.")
+                                    st.error("🔑 스트림릿 설정(Secrets)에 'GEMINI_API_KEY'가 등록되지 않았습니다!")
                                 else:
                                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                                    
-                                    # 🌟 [핵심 해결책] 하드코딩 대신 사용 가능한 최신 모델을 자동 검색!
                                     valid_model_name = None
                                     for m in genai.list_models():
                                         if 'generateContent' in m.supported_generation_methods:
-                                            valid_model_name = m.name # 사용 가능한 아무 모델이나 먼저 확보
-                                            if 'flash' in m.name.lower() or 'pro' in m.name.lower():
-                                                break # 최신형(flash, pro)이 보이면 바로 선택
+                                            valid_model_name = m.name
+                                            if 'flash' in m.name.lower() or 'pro' in m.name.lower(): break
                                                 
-                                    if valid_model_name is None:
-                                        st.error("구글 서버에서 사용 가능한 Gemini 모델을 찾을 수 없습니다.")
-                                    else:
-                                        # 찾아낸 최적의 모델로 자동 연결
+                                    if valid_model_name:
                                         model = genai.GenerativeModel(valid_model_name)
                                         prompt = f"""
                                         당신은 마트 데이터 분석 전문가입니다. {sim_weather} 날씨의 {sim_day} 상황(공휴일 {sim_holiday})을 가정한 XGBoost 예측치에 
                                         공간 거리 알고리즘을 결합하여 '{swap_a}'와 '{swap_b}' 구역 위치 변경 시뮬레이션을 수행했습니다.
                                         그 결과 {swap_a}는 {diff_a:+.1f}명, {swap_b}는 {diff_b:+.1f}명의 트래픽 변화가 예상됩니다.
-                                        이 하이브리드 시뮬레이션 결과(거리 변화뿐만 아니라 기상/요일 조건까지 반영된 결과)가 점장님에게 주는 전략적 의미와 
-                                        현장 적용 시 주의사항을 리테일 관점에서 전문적으로 분석해줘.
+                                        이 하이브리드 결과의 전략적 의미와 현장 적용 시 주의사항을 전문적으로 분석해줘.
                                         """
                                         res = model.generate_content(prompt)
                                         st.info(res.text)
@@ -1333,7 +1325,6 @@ elif menu == "LLM Assistant":
                                 break
                 except: pass
                 
-                # 원본에 있던 [핵심] 시스템 컨텍스트 동적 수집 기능
                 system_context = (
                     "당신은 리테일 매장의 공간 분석 및 운영 어드바이저입니다.\n"
                     "다음은 현재 대시보드에서 분석 중인 실시간 데이터 맥락입니다:\n"
@@ -1343,44 +1334,21 @@ elif menu == "LLM Assistant":
                     total_visitors = df_all['real_user_id'].nunique()
                     top_zone = df_all['zone'].value_counts().index[0]
                     total_stay_hrs = df_all['stay_sec'].sum() / 3600 if 'stay_sec' in df_all.columns else 0
-                    
-                    system_context += f"- 누적 방문객 수: {total_visitors:,.0f}명\n"
-                    system_context += f"- 총 체류 시간: {total_stay_hrs:,.0f}시간\n"
-                    system_context += f"- 가장 인기 있는 밀집 구역(Top Zone): {top_zone}\n"
-                    system_context += f"- 매장 내 관리 구역 목록: {', '.join(list(ZONES.keys()))}\n"
+                    system_context += f"- 누적 방문객 수: {total_visitors:,.0f}명\n- 총 체류 시간: {total_stay_hrs:,.0f}시간\n- 가장 인기 있는 밀집 구역: {top_zone}\n"
                 
-                if df_os is not None and not df_os.empty:
-                    android_count = df_os[df_os['os'] == 'Android']['count'].sum()
-                    iphone_count = df_os[df_os['os'] == 'iPhone']['count'].sum()
-                    system_context += f"- 고객 단말기 OS 비율: Android {android_count}대, iPhone {iphone_count}대\n"
-                
-                system_context += (
-                    "\n위 데이터를 바탕으로 매장 레이아웃 최적화, 수요 예측, 동선 개선 등에 대한 질문에 "
-                    "구체적이고 전문적인 솔루션을 제공해 주세요."
-                )
-                
-                model = genai.GenerativeModel(
-                    model_name=ai_model_name,
-                    system_instruction=system_context
-                )
-                
+                model = genai.GenerativeModel(model_name=ai_model_name, system_instruction=system_context)
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
                 for msg in st.session_state.chat_history:
                     with st.chat_message(msg["role"]): st.markdown(msg["content"])
-                    
                 if prompt := st.chat_input("Ask advisor..."):
                     st.session_state.chat_history.append({"role": "user", "content": prompt})
                     with st.chat_message("user"): st.markdown(prompt)
                     with st.chat_message("assistant"):
-                        with st.spinner("데이터 맥락을 해석하여 답변을 생성 중입니다..."):
-                            response = model.generate_content(prompt)
-                            st.markdown(response.text)
-                            st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-                            
-            except ValueError as ve:
-                st.warning(f"서버 보안 설정 필요: {ve}")
-            except Exception as e: 
-                st.error(f"API 연결에 실패했습니다. 오류: {e}")
+                        response = model.generate_content(prompt)
+                        st.markdown(response.text)
+                        st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+            except Exception as e: st.error(f"API 연결에 실패했습니다: {e}")
+
 # ✨ [기능 유지] 센서 맵 (하드웨어 배치도)
 elif menu == "Sensor Map":
     st.title("Hardware Deployment Map")
