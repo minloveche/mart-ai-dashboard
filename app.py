@@ -143,14 +143,21 @@ weather_info = load_weather()
 df_os = load_os_summary()
 
 def safe_date_match(val, target):
-    if '-' in str(val) and '-' in str(target): return str(val).strip() == str(target).strip()
-    def get_day_num(x):
-        nums = re.findall(r'\d+', str(x).split('.')[0])
-        return int(nums[-1]) if nums else None
-    v1 = get_day_num(val)
-    v2 = get_day_num(target)
-    if v1 is not None and v2 is not None: return v1 == v2
-    return str(val).strip() == str(target).strip()
+    # 어떤 형태의 날짜든 완벽하게 'YYYY-MM-DD'로 변환해서 비교하는 궁극의 함수
+    def normalize(d_str):
+        d_str = str(d_str).strip()
+        # 1. 2025-11-01, 2025/11/01, 2025.11.1 등 모든 형태 찾기
+        match = re.search(r'(\d{4})[-_./](\d{1,2})[-_./](\d{1,2})', d_str)
+        if match:
+            y, m, d = match.groups()
+            return f"{y}-{int(m):02d}-{int(d):02d}"
+        # 2. 만약 '1', '2' 처럼 일(Day) 숫자만 적혀있다면 옛날 10월 데이터로 간주
+        nums = re.findall(r'\d+', d_str)
+        if nums:
+            return f"2025-10-{int(nums[-1]):02d}"
+        return d_str
+        
+    return normalize(val) == normalize(target)
 
 def sort_date_smart(d):
     nums = re.findall(r'\d+', str(d))
