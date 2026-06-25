@@ -123,10 +123,9 @@ def load_weather():
             df_w = pd.read_csv("Day_Weather_Enhanced.csv")
             for index, row in df_w.iterrows():
                 date_str = str(row['Date']).strip()
-                try: day_num = int(date_str.split('-')[-1])
-                except: day_num = index + 1 
                 weather = str(row['Weather']).strip()
-                weather_dict[day_num] = f"{date_str} [{weather}]"
+                # ⭐ [핵심 수정] '일(Day)' 숫자 대신 '2025-10-01' 전체를 고유 키값으로 사용합니다!
+                weather_dict[date_str] = f"{date_str} [{weather}]"
         except: pass
     return weather_dict
 
@@ -161,10 +160,8 @@ def sort_date_smart(d):
 
 def format_date_option(d):
     if d == "All Dates (Cumulative)": return d
-    try:
-        day_num = int(str(d).split('-')[-1])
-        return weather_info.get(day_num, str(d))
-    except: return str(d)
+    # ⭐ [핵심 수정] 전체 날짜 문자열로 딕셔너리에서 바로 날씨를 찾아옵니다!
+    return weather_info.get(str(d).strip(), str(d))
 
 st.sidebar.title("Spatial Analytics")
 
