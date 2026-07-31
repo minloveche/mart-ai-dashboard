@@ -98,6 +98,17 @@ ZONES = {
     '휴지': {'x_min': 207, 'x_max': 294, 'y_min': 302, 'y_max': 375}, '홈데코': {'x_min': 236, 'x_max': 322, 'y_min': 399, 'y_max': 493}
 }
 
+AI_ZONE_MAP = {
+    'Noodle': '라면', 
+    'Checkout': '행사(1)', # 결제/행사 구역 매핑
+    'Toy': '장난감', 
+    'Meal kit': '냉동식품', 
+    'Bath': '퍼스널케어', 
+    'Snack': '과자',
+    'Beverage': '음료', 
+    'Liquor': '주류'
+}
+
 @st.cache_data
 def load_all_sessions():
     files = glob.glob("Zone_Visit_Sessions*.*") + glob.glob("sessions_compressed.*")
@@ -736,9 +747,16 @@ elif menu == "Demand Forecast":
                     if f"zone_{zone}" in input_data.columns: 
                         input_data[f"zone_{zone}"] = 1
                     
+                    kor_zone_name = AI_ZONE_MAP.get(zone, zone)
+                    
                     predictions[zone] = ai_model.predict(input_data)[0]
                     inputs_dict[zone] = input_data.copy() 
                 
+                st.session_state['latest_forecast'] = predictions
+                st.session_state['sim_weather'] = future_weather
+                st.session_state['sim_day'] = future_dayname
+
+
                 with st.expander("🔍 XGBoost 엔진 작동 증명 및 AI 사고 과정 (Explainable AI)", expanded=True):
                     st.markdown(f"**1. 탑재된 인공지능 모듈 확인:** `<class '{type(ai_model).__module__}.{type(ai_model).__name__}'>`")
                     if 'XGB' in type(ai_model).__name__:
@@ -955,10 +973,10 @@ elif menu == "Demand Forecast":
 
             except Exception as e: 
                 st.error(f"XGBoost 모델을 로드하거나 실행하는 중 오류가 발생했습니다. (파일이 있는지 확인하세요): {e}")
-# ✨ [신규 기능 통합] AI 맞춤 조건 시뮬레이터 (LSTM)
+# ✨ [LSTM AI 정상화] AI 맞춤 조건 시뮬레이터 (진짜 데이터 기반 시계열 주입)
 elif menu == "AI 맞춤 조건 시뮬레이터":
     st.title("🎯 AI 맞춤 조건 트래픽 시뮬레이터 (LSTM)")
-    st.markdown("원하는 요일, 날씨, 시간대를 설정하면 **LSTM 모델이 과거 패턴을 바탕으로 해당 시점의 혼잡도를 예측**합니다.")
+    st.markdown("설정한 요일, 날씨, 시간대를 바탕으로 **실제 일치하는 과거 데이터의 흐름을 추적하여 LSTM 모델이 정밀 예측**합니다.")
 
     @st.cache_resource
     def load_lstm_assets():
@@ -985,72 +1003,126 @@ elif menu == "AI 맞춤 조건 시뮬레이터":
             sim_minute = st.selectbox("분 (Minute)", [0, 10, 20, 30, 40, 50])
 
         if st.button("🚀 LSTM 시뮬레이션 가동", use_container_width=True, type="primary"):
-            with st.spinner("AI 딥러닝 엔진이 과거 패턴을 분석 중입니다..."):
-                target_time = datetime.datetime(2025, 10, 1, sim_hour, sim_minute)
-                sequence_data = []
-                
-                # 과거 60분간의 가상 시계열 데이터 생성 (Look-back window)
-                for i in range(6, 0, -1):
-                    p_time = target_time - datetime.timedelta(minutes=10 * i)
-                    base_traffic = 80 if wk_val == 1 else 40
-                    step = [max(0, base_traffic + np.random.randint(-15, 15))] * len(zone_cols)
-                    step.extend([w_val, wk_val, p_time.hour, p_time.minute])
-                    sequence_data.append(step)
-                
-                scaled_in = scaler.transform(pd.DataFrame(sequence_data))
-                pred_scaled = lstm_model.predict(np.array([scaled_in]))
-                
-                # 결과 역변환 (Inverse Transform)
-                dummy = np.zeros((1, len(zone_cols) + 4))
-                dummy[0, :pred_scaled.shape[1]] = pred_scaled[0] 
-                pred_actual = scaler.inverse_transform(dummy)[0, :pred_scaled.shape[1]]
-                preds = {z: max(0, int(v)) for z, v in zip(zone_cols, pred_actual)}
-
-                # 히트맵 좌표 생성
-                swards_df = pd.read_csv('swards (1).csv')
-                fx, fy = [], []
-                z_coords = swards_df.groupby('description')[['x', 'y']].mean().to_dict('index')
-                for z, v in preds.items():
-                    if z in z_coords and v > 0:
-                        cx, cy = z_coords[z]['x'], z_coords[z]['y']
-                        fx.extend(np.clip(np.random.normal(cx, 25, v), 0, 663))
-                        fy.extend(np.clip(np.random.normal(cy, 25, v), 0, 500))
-
-                c_chart, c_insight = st.columns([2.5, 1])
-                with c_chart:
-                    fig, ax = plt.subplots(figsize=(10, 7), dpi=150)
-                    fig.patch.set_facecolor('#0F172A')
-                    ax.set_facecolor('#0F172A')
-                    if os.path.exists('map_image.jpg'): 
-                        ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
-                    else: 
-                        ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
+            if df_all is None or df_all.empty:
+                st.error("분석할 과거 세션 데이터(df_all)가 로드되지 않았습니다.")
+            else:
+                with st.spinner("과거 데이터 패턴 탐색 및 LSTM 딥러닝 추론 중..."):
+                    # 1. 사용자가 선택한 조건에 부합하는 날짜 찾기
+                    matched_dates = []
+                    for d_str, w_info in weather_info.items():
+                        try:
+                            is_we = 1 if pd.to_datetime(d_str).weekday() >= 5 else 0
+                        except:
+                            is_we = 0
+                        weather_match = re.search(r'\[(.*?)\]', w_info)
+                        weather_name = weather_match.group(1) if weather_match else ""
+                        
+                        if is_we == wk_val and sim_weather.lower() in weather_name.lower():
+                            matched_dates.append(d_str)
                     
-                    if fx:
-                        h, x, y = np.histogram2d(fy, fx, bins=[100, 132], range=[[0, 500], [0, 663]])
-                        k = gaussian_filter(h, 4.0)
-                        mv = np.max(k)
-                        if mv > 0: 
-                            ax.imshow(k, extent=[0, 663, 500, 0], cmap='magma', alpha=0.8, vmin=mv*0.05, vmax=mv)
-                    ax.axis('off')
-                    st.pyplot(fig)
-                
-                with c_insight:
-                    top3 = sorted(preds.items(), key=lambda x: x[1], reverse=True)[:3]
-                    st.markdown(f"""
-                    <div style="background-color:#1E293B; padding:20px; border-radius:8px; border-left:4px solid #10B981;">
-                        <p style="color:#94A3B8; font-size:13px;">타겟 시점: {sim_hour:02d}:{sim_minute:02d} | {sim_weather}</p>
-                        <b style="color:#38BDF8;">🔥 예상 혼잡 TOP 3 구역</b>
-                        <ul style="margin-top:10px; color:#CBD5E1; font-size:14px;">
-                            <li><b>{top3[0][0]}</b>: {top3[0][1]}명</li>
-                            <li><b>{top3[1][0]}</b>: {top3[1][1]}명</li>
-                            <li><b>{top3[2][0]}</b>: {top3[2][1]}명</li>
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.success("✅ LSTM 모델 추론이 완료되었습니다.")
+                    if not matched_dates:
+                        matched_dates = df_all['date'].unique().tolist()
+
+                    # ★ [수정할 부분: 임시 데이터프레임 생성 시 exit_time_int도 같이 만들어줍니다]
+                    df_sim = df_all[df_all['date'].isin(matched_dates)].copy()
+                    df_sim['enter_time_int'] = pd.to_numeric(df_sim['enter_time'], errors='coerce').fillna(-1).astype(int)
+                    # exit_time도 정수로 변환 (결측치는 아주 큰 숫자로 채워 체류 중인 것으로 간주)
+                    df_sim['exit_time_int'] = pd.to_numeric(df_sim['exit_time'], errors='coerce').fillna(999999).astype(int)
+
+                    target_time = datetime.datetime(2026, 3, 31, sim_hour, sim_minute)
+                    sequence_data = []
+                    
+                    # 2. 10초 단위 정수(0~8640)를 이용한 초고속 과거 데이터 슬라이싱
+                    for i in range(6, 0, -1):
+                        p_time = target_time - datetime.timedelta(minutes=10 * i)
+                        
+                        start_idx = (p_time.hour * 3600 + p_time.minute * 60) // 10
+                        end_idx = start_idx + 60 
+                        
+                        # ★ [클로드의 완벽한 Overlap 공식 적용]
+                        time_filtered = df_sim[
+                            (df_sim['enter_time_int'] < end_idx) & 
+                            (df_sim['exit_time_int'] >= start_idx)
+                        ]
+                        
+                        step_zone_counts = []
+                        for z_col in zone_cols:
+                            kor_zone_name = AI_ZONE_MAP.get(z_col, z_col)
+                            visitors = time_filtered[time_filtered['zone'] == kor_zone_name]['real_user_id'].nunique()
+                            step_zone_counts.append(visitors)
+                        
+                        step_features = step_zone_counts + [w_val, wk_val, p_time.hour, p_time.minute]
+                        sequence_data.append(step_features)
+                    
+                    # 3. 모델 주입 및 예측
+                    seq_df = pd.DataFrame(sequence_data).fillna(0)
+                    
+                    # 혹시 모델이 요구하는 피처 수와 안 맞을 경우를 대비한 안전장치
+                    expected_features = len(zone_cols) + 4
+                    if seq_df.shape[1] != expected_features:
+                        st.error(f"데이터 피처 개수 오류: 모델은 {expected_features}개를 원하지만 {seq_df.shape[1]}개가 들어갔습니다. AI_ZONE_MAP을 확인하세요.")
+                        st.stop()
+
+                    scaled_in = scaler.transform(seq_df)
+                    pred_scaled = lstm_model.predict(np.array([scaled_in]))
+                    
+                    dummy = np.zeros((1, len(zone_cols) + 4))
+                    dummy[0, :pred_scaled.shape[1]] = pred_scaled[0] 
+                    pred_actual = scaler.inverse_transform(dummy)[0, :pred_scaled.shape[1]]
+                    
+                    preds = {(AI_ZONE_MAP.get(z, z) or z): max(0, int(v)) for z, v in zip(zone_cols, pred_actual)}
+
+                    # 4. 시각화
+                    swards_df = pd.read_csv('swards (1).csv')
+                    fx, fy = [], []
+                    z_coords = swards_df.groupby('description')[['x', 'y']].mean().to_dict('index')
+                    
+                    for z_eng, v in zip(zone_cols, pred_actual):
+                        if z_eng in z_coords and v > 0:
+                            cx, cy = z_coords[z_eng]['x'], z_coords[z_eng]['y']
+                            fx.extend(np.clip(np.random.normal(cx, 25, int(v)), 0, 663))
+                            fy.extend(np.clip(np.random.normal(cy, 25, int(v)), 0, 500))
+
+                    c_chart, c_insight = st.columns([2.5, 1])
+                    with c_chart:
+                        fig, ax = plt.subplots(figsize=(10, 7), dpi=150)
+                        fig.patch.set_facecolor('#0F172A')
+                        ax.set_facecolor('#0F172A')
+                        if os.path.exists('map_image.jpg'): 
+                            ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
+                        else: 
+                            ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
+                        
+                        if fx:
+                            h, x, y = np.histogram2d(fy, fx, bins=[100, 132], range=[[0, 500], [0, 663]])
+                            k = gaussian_filter(h, 4.0)
+                            mv = np.max(k)
+                            if mv > 0: 
+                                ax.imshow(k, extent=[0, 663, 500, 0], cmap='magma', alpha=0.8, vmin=mv*0.05, vmax=mv)
+                        ax.axis('off')
+                        st.pyplot(fig)
+                    
+                    with c_insight:
+                        top3 = sorted(preds.items(), key=lambda x: x[1], reverse=True)[:3]
+                        st.markdown(f"""
+                        <div style="background-color:#1E293B; padding:20px; border-radius:8px; border-left:4px solid #10B981;">
+                            <p style="color:#94A3B8; font-size:13px;">타겟 시점: {sim_hour:02d}:{sim_minute:02d} | {sim_weather}</p>
+                            <b style="color:#38BDF8;">🔥 예상 혼잡 TOP 3 구역</b>
+                            <ul style="margin-top:10px; color:#CBD5E1; font-size:14px;">
+                                <li><b>{top3[0][0]}</b>: {top3[0][1]}명</li>
+                                <li><b>{top3[1][0]}</b>: {top3[1][1]}명</li>
+                                <li><b>{top3[2][0]}</b>: {top3[2][1]}명</li>
+                            </ul>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        st.success("✅ 실제 데이터 기반 LSTM 추론 완료!")
+                        
+                        st.session_state['latest_forecast'] = preds
+                        st.session_state['sim_weather'] = sim_weather
+                        st.session_state['sim_day'] = sim_weekend
+                        
     except Exception as e: 
-        st.error(f"LSTM 로드 실패: {e}")
+        st.error(f"LSTM 로드 및 예측 실패: {e}")
 
 # ✨ [LSTM AI] 실시간 시계열 기반 미래 히트맵 예측
 elif menu == "Future Heatmap (LSTM)":
@@ -1334,11 +1406,24 @@ elif menu == "LLM Assistant":
                     "다음은 현재 대시보드에서 분석 중인 실시간 데이터 맥락입니다:\n"
                 )
                 
+                # 1. 기본 과거 누적 데이터
                 if df_all is not None and not df_all.empty:
                     total_visitors = df_all['real_user_id'].nunique()
                     top_zone = df_all['zone'].value_counts().index[0]
                     total_stay_hrs = df_all['stay_sec'].sum() / 3600 if 'stay_sec' in df_all.columns else 0
-                    system_context += f"- 누적 방문객 수: {total_visitors:,.0f}명\n- 총 체류 시간: {total_stay_hrs:,.0f}시간\n- 가장 인기 있는 밀집 구역: {top_zone}\n"
+                    system_context += f"- [기본 데이터] 누적 방문객: {total_visitors:,.0f}명, 총 체류: {total_stay_hrs:,.0f}시간, 인기 구역: {top_zone}\n"
+                
+                # 2. [핵심] 사용자가 방금 시뮬레이션한 '최신 수요 예측 결과' 동적 주입
+                if 'latest_forecast' in st.session_state:
+                    preds = st.session_state['latest_forecast']
+                    # 혼잡도가 높은 Top 3 구역만 추려서 전달
+                    top_3_preds = sorted(preds.items(), key=lambda x: x[1], reverse=True)[:3]
+                    pred_str = ", ".join([f"{k}({v:,.0f}명)" for k, v in top_3_preds])
+                    
+                    system_context += f"\n- [최신 수요 예측 시뮬레이션 결과]\n"
+                    system_context += f"  * 가상 환경: {st.session_state.get('sim_weather', '알 수 없음')}, {st.session_state.get('sim_day', '알 수 없음')}\n"
+                    system_context += f"  * 폭발적 트래픽 집중 예상 구역 Top 3: {pred_str}\n"
+                    system_context += "\n위 시뮬레이션 결과를 최우선으로 반영하여, 잉여 인력 배치, 결품 방지를 위한 재고 보충, 미끼 상품 위치 조정 전략을 구체적이고 실무적인 톤으로 조언해 주세요."
                 
                 model = genai.GenerativeModel(model_name=ai_model_name, system_instruction=system_context)
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
