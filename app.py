@@ -99,15 +99,58 @@ ZONES = {
 }
 
 AI_ZONE_MAP = {
-    'Noodle': '라면', 
-    'Checkout': '행사(1)', # 결제/행사 구역 매핑
-    'Toy': '장난감', 
-    'Meal kit': '냉동식품', 
-    'Bath': '퍼스널케어', 
+    # swards description / LSTM zone_col (영문) → sessions zone (한글). 복수 구역은 list.
+    'Noodle': '라면',
+    'Cosmetics': '화장품',
+    'Stationery': '문구(1)',
+    'Toy, Bed': ['장난감', '침구'],
+    'Toy': '장난감',
+    'Car products': '자동차용품',
+    'Bath': '퍼스널케어',
+    'Detergent': '주방용품',
+    'Household items': '홈데코',
+    'Wine, Liquor': '주류',
+    'Liquor': '주류',
+    'Meal kit': '식품코너',
+    'Frozen food': '냉동식품',
+    'Seafood': '수산',
+    'Vegetable': '채소/계란/과일',
+    'Fruits': '채소/계란/과일',
+    'Kids snack': '과자',
     'Snack': '과자',
-    'Beverage': '음료', 
-    'Liquor': '주류'
+    'Side dishes & Sauce': '반찬/소스',
+    'Grain': '곡물/건조식품',
+    'Underwear': '속옷',
+    'Sport': '스포츠',
+    'milk products, Juice': '음료',
+    'Beverage': '음료',
+    # sessions에 대응 구역 없음 (비교 시 0명)
+    'Checkout': None,
+    'Self checkout': None,
+    'Entrance': None,
+    'Rest area': None,
+    'Pet': None,
 }
+
+def session_zones_for_ai_zone(zone_key):
+    """LSTM/XGBoost 영문 구역명 → sessions 한글 zone 이름(복수 가능)."""
+    if zone_key in AI_ZONE_MAP:
+        mapped = AI_ZONE_MAP[zone_key]
+    else:
+        mapped = zone_key
+    if mapped is None:
+        return []
+    if isinstance(mapped, (list, tuple)):
+        return list(mapped)
+    return [mapped]
+
+def ai_zone_display_name(zone_key):
+    mapped = AI_ZONE_MAP.get(zone_key, zone_key)
+    if mapped is None:
+        return zone_key
+    if isinstance(mapped, (list, tuple)):
+        return '/'.join(mapped)
+    return mapped
 
 @st.cache_data
 def load_all_sessions():
@@ -149,8 +192,111 @@ def load_os_summary():
             return None
     return None
 
+@st.cache_data
+def load_weather_df():
+    if os.path.exists("Day_Weather_Enhanced.csv"):
+        try:
+            df_w = pd.read_csv("Day_Weather_Enhanced.csv")
+            df_w['Date'] = df_w['Date'].astype(str).str.strip()
+            df_w['Weather'] = df_w['Weather'].astype(str).str.strip()
+            return df_w
+        except:
+            return None
+    return None
+
+def normalize_date_str(d_str):
+    d_str = str(d_str).strip()
+    match = re.search(r'(\d{4})[-_./](\d{1,2})[-_./](\d{1,2})', d_str)
+    if match:
+        y, m, d = match.groups()
+        return f"{y}-{int(m):02d}-{int(d):02d}"
+    nums = re.findall(r'\d+', d_str)
+    if nums:
+        return f"2025-10-{int(nums[-1]):02d}"
+    return d_str
+
+def attach_weather_to_sessions(df_sessions, df_weather):
+    if df_sessions is None or df_weather is None or df_sessions.empty:
+        return None
+    weather_map = {normalize_date_str(row['Date']): row['Weather'] for _, row in df_weather.iterrows()}
+    df = df_sessions.copy()
+    df['weather'] = df['date'].apply(lambda x: weather_map.get(normalize_date_str(x), 'Unknown'))
+    return df
+
+def dedupe_consecutive_zones(zones):
+    if not zones:
+        return []
+    result = [zones[0]]
+    for z in zones[1:]:
+        if z != result[-1]:
+            result.append(z)
+    return result
+
+def build_journey_sequences(df, path_length=4):
+    """고객·날짜별 방문 구역을 시간순 정렬 후 연속 중복 제거, path_length 길이로 자릅니다.
+    같은 고객이라도 다른 날짜 방문은 각각 별도 동선으로 집계합니다."""
+    if df is None or df.empty or 'zone' not in df.columns:
+        return pd.DataFrame(columns=['real_user_id', 'path_tuple', 'path_str', 'count'])
+
+    group_cols = ['real_user_id']
+    if 'date' in df.columns:
+        group_cols.append('date')
+
+    sort_cols = list(group_cols)
+    if 'enter_time' in df.columns:
+        sort_cols.append('enter_time')
+
+    rows = []
+    for _, group in df.sort_values(sort_cols).groupby(group_cols, sort=False):
+        zones = dedupe_consecutive_zones(group['zone'].tolist())
+        if len(zones) < 2:
+            continue
+        clipped = tuple(zones[:path_length])
+        rows.append({
+            'real_user_id': group['real_user_id'].iloc[0],
+            'path_tuple': clipped,
+            'path_str': ' → '.join(clipped),
+            'path_len': len(clipped),
+        })
+
+    if not rows:
+        return pd.DataFrame(columns=['real_user_id', 'path_tuple', 'path_str', 'path_len', 'count'])
+
+    journey_df = pd.DataFrame(rows)
+    path_counts = (
+        journey_df.groupby(['path_tuple', 'path_str', 'path_len'])
+        .size()
+        .reset_index(name='count')
+        .sort_values('count', ascending=False)
+    )
+    return path_counts
+
+def paths_to_step_links(path_stats):
+    """Top 경로들을 Sankey/플로우용 source-target-value 링크로 변환."""
+    links = []
+    for _, row in path_stats.iterrows():
+        path = row['path_tuple']
+        count = row['count']
+        for i in range(len(path) - 1):
+            links.append({
+                'step_from': i + 1,
+                'step_to': i + 2,
+                'source': path[i],
+                'target': path[i + 1],
+                'source_label': f"{path[i]} (Step {i + 1})",
+                'target_label': f"{path[i + 1]} (Step {i + 2})",
+                'value': count,
+            })
+    if not links:
+        return pd.DataFrame(columns=['source_label', 'target_label', 'value', 'source', 'target', 'step_from', 'step_to'])
+    link_df = pd.DataFrame(links).groupby(
+        ['source_label', 'target_label', 'source', 'target', 'step_from', 'step_to'], as_index=False
+    )['value'].sum()
+    return link_df.sort_values('value', ascending=False)
+
 df_all = load_all_sessions()
 weather_info = load_weather()
+df_weather = load_weather_df()
 df_os = load_os_summary()
 
 def safe_date_match(val, target):
@@ -184,11 +330,11 @@ def format_date_option(d):
 st.sidebar.title("Spatial Analytics")
 
 # ✨ 메인 메뉴 구성 (AI 통합)
-main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Heatmap Analysis", "AI Operations", "Sensor Map"])
+main_category = st.sidebar.radio("Modules", ["Traffic Summary", "Customer Persona", "Weather Impact", "Journey Paths", "Heatmap Analysis", "AI Operations", "Sensor Map"])
 
 if main_category == "AI Operations":
     st.sidebar.markdown("<hr style='margin: 10px 0; border-color: #334155;'>", unsafe_allow_html=True) 
-    sub_menu = st.sidebar.radio("AI Modules", ["Demand Forecast", "AI 맞춤 조건 시뮬레이터", "Future Heatmap (LSTM)", "Layout Simulator", "LLM Assistant"])
+    sub_menu = st.sidebar.radio("AI Modules", ["Demand Forecast", "AI 맞춤 조건 시뮬레이터", "Layout Simulator", "LLM Assistant"])
     menu = sub_menu 
 else:
     menu = main_category
@@ -591,7 +737,7 @@ elif menu == "Customer Persona":
                     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
                     user_features['cluster'] = kmeans.fit_predict(X_scaled)
 
-                    cluster_centers = user_features.groupby('cluster').mean()
+                    cluster_centers = user_features.groupby('cluster').mean(numeric_only=True)
                     cluster_centers['score'] = cluster_centers['total_dwell_min'] + cluster_centers['unique_zones']
                     sorted_clusters = cluster_centers.sort_values('score', ascending=False).index.tolist()
                     
@@ -646,6 +792,94 @@ elif menu == "Customer Persona":
                     ).properties(height=450)
                     st.altair_chart(scatter, use_container_width=True)
 
+                    st.markdown("<br>#### 🗺️ 페르소나별 구역 선호 (Top 5)", unsafe_allow_html=True)
+                    st.caption("각 페르소나 유형 고객 중 해당 구역을 방문한 비율(%) — 높을수록 해당 유형의 '대표 동선' 구역입니다.")
+
+                    user_zone_visits = filtered_df.groupby(['real_user_id', 'zone'])['stay_sec'].sum().reset_index()
+                    user_zone_visits = user_zone_visits.merge(
+                        user_features[['real_user_id', 'Persona']], on='real_user_id'
+                    )
+                    persona_totals = user_features.groupby('Persona').size().to_dict()
+
+                    zone_pref_rows = []
+                    for persona_name in color_map.keys():
+                        persona_users = user_features[user_features['Persona'] == persona_name]['real_user_id']
+                        p_total = persona_totals.get(persona_name, 1)
+                        zone_counts = (
+                            user_zone_visits[user_zone_visits['real_user_id'].isin(persona_users)]
+                            .groupby('zone')['real_user_id'].nunique()
+                            .reset_index(name='visitors')
+                        )
+                        zone_counts['visit_rate'] = (zone_counts['visitors'] / p_total) * 100
+                        zone_counts['Persona'] = persona_name
+                        zone_pref_rows.append(zone_counts)
+
+                    if zone_pref_rows:
+                        zone_pref_df = pd.concat(zone_pref_rows, ignore_index=True)
+                        top5_per_persona = (
+                            zone_pref_df.sort_values(['Persona', 'visit_rate'], ascending=[True, False])
+                            .groupby('Persona', group_keys=False).head(5)
+                        )
+
+                        pref_cols = st.columns(3)
+                        for i, (p_name, p_color) in enumerate(color_map.items()):
+                            p_top = top5_per_persona[top5_per_persona['Persona'] == p_name].sort_values('visit_rate', ascending=True)
+                            with pref_cols[i]:
+                                if not p_top.empty:
+                                    bar_chart = alt.Chart(p_top).mark_bar(color=p_color, cornerRadiusEnd=4).encode(
+                                        x=alt.X('visit_rate:Q', title='방문 비율 (%)', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                                        y=alt.Y('zone:N', sort='-x', title=None),
+                                        tooltip=[
+                                            alt.Tooltip('zone:N', title='구역'),
+                                            alt.Tooltip('visit_rate:Q', format='.1f', title='방문 비율 (%)'),
+                                            alt.Tooltip('visitors:Q', title='방문 고객 수')
+                                        ]
+                                    ).properties(height=220, title=p_name)
+                                    st.altair_chart(bar_chart, use_container_width=True)
+                                else:
+                                    st.info("데이터 없음")
+
+                        st.markdown("<br>#### 🔥 페르소나 × 구역 선호 히트맵", unsafe_allow_html=True)
+                        heatmap_zones = (
+                            zone_pref_df.groupby('zone')['visit_rate'].mean()
+                            .sort_values(ascending=False).head(12).index.tolist()
+                        )
+                        heatmap_data = zone_pref_df[zone_pref_df['zone'].isin(heatmap_zones)].copy()
+                        if not heatmap_data.empty:
+                            persona_heatmap = alt.Chart(heatmap_data).mark_rect().encode(
+                                x=alt.X('zone:N', title='구역', axis=alt.Axis(labelAngle=-45, gridColor='#334155', domainColor='#334155')),
+                                y=alt.Y('Persona:N', title='페르소나', sort=list(color_map.keys())),
+                                color=alt.Color('visit_rate:Q', scale=alt.Scale(scheme='tealblues'), legend=alt.Legend(title='방문 비율 (%)')),
+                                tooltip=[
+                                    alt.Tooltip('Persona:N', title='페르소나'),
+                                    alt.Tooltip('zone:N', title='구역'),
+                                    alt.Tooltip('visit_rate:Q', format='.1f', title='방문 비율 (%)')
+                                ]
+                            ).properties(height=280)
+                            st.altair_chart(persona_heatmap, use_container_width=True)
+
+                        st.markdown("<br>#### 💡 페르소나별 매장 전략", unsafe_allow_html=True)
+                        strategy_cards = []
+                        for p_name in color_map.keys():
+                            p_top = top5_per_persona[top5_per_persona['Persona'] == p_name]
+                            if not p_top.empty:
+                                top_zones = ", ".join(p_top.sort_values('visit_rate', ascending=False)['zone'].head(3).tolist())
+                                if '탐색형' in p_name:
+                                    tip = f"**{top_zones}** 구역 중심으로 연관 상품 크로스셀링·시식 코너를 배치하세요."
+                                elif '목적형' in p_name:
+                                    tip = f"**{top_zones}** 구역을 입구 동선에 가깝게 재배치하면 퀵쇼핑 만족도가 올라갑니다."
+                                else:
+                                    tip = f"**{top_zones}** 구역에 표준형 고객용 기획전·2+1 프로모션을 집중 배치하세요."
+                                strategy_cards.append((p_name, color_map[p_name], tip))
+
+                        for p_name, p_color, tip in strategy_cards:
+                            st.markdown(f"""
+                            <div style="background-color: #1E293B; padding: 14px 18px; border-radius: 8px; border-left: 4px solid {p_color}; margin-bottom: 10px;">
+                                <span style="color: #F8FAFC; font-weight: 700;">{p_name}</span>
+                                <p style="color: #CBD5E1; margin: 8px 0 0 0; font-size: 14px;">{tip}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
                     st.markdown("<br>#### 💡 Actionable Insights", unsafe_allow_html=True)
 
                     explorer_pct = (counts.get('🛒 탐색형 (대형장보기)', 0) / total_customers) * 100
@@ -668,6 +902,468 @@ elif menu == "Customer Persona":
                     st.info("클러스터링을 수행하기에 고객 데이터가 부족합니다.")
         else:
             st.info("선택한 조건에 해당하는 데이터가 없습니다.")
+
+elif menu == "Weather Impact":
+    st.title("Weather Impact Analysis")
+    st.markdown("날씨 조건별 트래픽·체류시간·동시 방문 패턴을 비교하여 **기상 변화에 따른 매장 운영 전략**을 도출합니다.")
+
+    if df_all is None or df_weather is None:
+        st.error("세션 데이터 또는 날씨 데이터(Day_Weather_Enhanced.csv)를 불러올 수 없습니다.")
+    else:
+        df_weather_enriched = attach_weather_to_sessions(df_all, df_weather)
+        available_weathers = sorted([w for w in df_weather_enriched['weather'].unique() if w != 'Unknown'])
+
+        if not available_weathers:
+            st.info("날짜와 매칭되는 날씨 데이터가 없습니다.")
+        else:
+            col_w1, col_w2, col_w3 = st.columns([1, 1, 1.2])
+            default_a = "Sunny" if "Sunny" in available_weathers else available_weathers[0]
+            default_b = "Rainy" if "Rainy" in available_weathers else (available_weathers[1] if len(available_weathers) > 1 else available_weathers[0])
+            with col_w1:
+                weather_a = st.selectbox("비교 날씨 A", available_weathers, index=available_weathers.index(default_a) if default_a in available_weathers else 0, key="weather_a")
+            with col_w2:
+                weather_b = st.selectbox("비교 날씨 B", available_weathers, index=available_weathers.index(default_b) if default_b in available_weathers else 0, key="weather_b")
+            with col_w3:
+                st.info("💡 예: 맑음 vs 비 — 구역별 트래픽·체류·동시 방문 차이를 한눈에 비교합니다.")
+
+            if weather_a == weather_b:
+                st.warning("서로 다른 두 날씨를 선택해 주세요.")
+            else:
+                df_a = df_weather_enriched[df_weather_enriched['weather'] == weather_a]
+                df_b = df_weather_enriched[df_weather_enriched['weather'] == weather_b]
+                dates_a = df_a['date'].nunique()
+                dates_b = df_b['date'].nunique()
+
+                def weather_summary(df_w):
+                    return {
+                        'visitors': df_w['real_user_id'].nunique(),
+                        'dwell_hrs': df_w['stay_sec'].sum() / 3600 if 'stay_sec' in df_w.columns else 0,
+                        'avg_zones': df_w.groupby('real_user_id')['zone'].nunique().mean() if not df_w.empty else 0,
+                        'days': df_w['date'].nunique()
+                    }
+
+                sum_a, sum_b = weather_summary(df_a), weather_summary(df_b)
+
+                st.markdown("#### 📊 날씨별 핵심 지표 비교")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric(f"{weather_a} 방문객", f"{sum_a['visitors']:,.0f}", f"{sum_a['days']}일 데이터")
+                m2.metric(f"{weather_b} 방문객", f"{sum_b['visitors']:,.0f}", f"{sum_b['days']}일 데이터")
+                m3.metric(f"{weather_a} 총 체류", f"{sum_a['dwell_hrs']:,.0f} hrs")
+                m4.metric(f"{weather_b} 총 체류", f"{sum_b['dwell_hrs']:,.0f} hrs")
+
+                def zone_stats_by_weather(df_w):
+                    if 'stay_sec' in df_w.columns:
+                        uz = df_w.groupby(['zone', 'real_user_id'])['stay_sec'].sum().reset_index()
+                        visitors = uz.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
+                        dwellers = uz[uz['stay_sec'] >= 30]
+                        dwell = dwellers.groupby('zone')['stay_sec'].apply(lambda x: x.quantile(0.9) / 60.0).reset_index(name='Avg_Dwell_Min')
+                    else:
+                        uz = df_w.groupby(['zone', 'real_user_id']).size().reset_index(name='cnt')
+                        visitors = uz.groupby('zone')['real_user_id'].nunique().reset_index(name='Visitors')
+                        dwell = uz.groupby('zone')['cnt'].apply(lambda x: x.quantile(0.9) * 10 / 60.0).reset_index(name='Avg_Dwell_Min')
+                    stats = pd.merge(visitors, dwell, on='zone', how='left').fillna(0)
+                    stats['Visitors_Per_Day'] = stats['Visitors'] / max(df_w['date'].nunique(), 1)
+                    return stats
+
+                stats_a = zone_stats_by_weather(df_a)
+                stats_b = zone_stats_by_weather(df_b)
+                stats_a['Weather'] = weather_a
+                stats_b['Weather'] = weather_b
+
+                TOP_N_ZONES = 10
+                zone_wide = pd.merge(
+                    stats_a[['zone', 'Visitors_Per_Day', 'Avg_Dwell_Min']],
+                    stats_b[['zone', 'Visitors_Per_Day', 'Avg_Dwell_Min']],
+                    on='zone', suffixes=('_A', '_B')
+                )
+                zone_wide['Traffic_Score'] = zone_wide['Visitors_Per_Day_A'] + zone_wide['Visitors_Per_Day_B']
+                top_zones = zone_wide.nlargest(TOP_N_ZONES, 'Traffic_Score')['zone'].tolist()
+                zone_order = top_zones[::-1]
+                plot_wide = zone_wide[zone_wide['zone'].isin(top_zones)]
+
+                def weather_dumbbell_chart(df_plot, col_a, col_b, x_title, height=380):
+                    """구역별로 날씨 A·B 값을 점+연결선으로 비교 (막대 겹침 없음)."""
+                    base = alt.Chart(df_plot).encode(
+                        y=alt.Y('zone:N', sort=zone_order, title=None, axis=alt.Axis(labelLimit=220, gridColor='#334155', domainColor='#334155'))
+                    )
+                    connector = base.mark_rule(color='#64748B', strokeWidth=2, opacity=0.55).encode(
+                        x=alt.X(f'{col_a}:Q', title=x_title, axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        x2=f'{col_b}:Q'
+                    )
+                    dot_a = base.mark_point(filled=True, size=110).encode(
+                        x=f'{col_a}:Q',
+                        color=alt.value('#38BDF8'),
+                        tooltip=[
+                            alt.Tooltip('zone:N', title='구역'),
+                            alt.Tooltip(f'{col_a}:Q', format='.1f', title=f'{weather_a}'),
+                        ]
+                    )
+                    dot_b = base.mark_point(filled=True, size=110).encode(
+                        x=f'{col_b}:Q',
+                        color=alt.value('#F43F5E'),
+                        tooltip=[
+                            alt.Tooltip('zone:N', title='구역'),
+                            alt.Tooltip(f'{col_b}:Q', format='.1f', title=f'{weather_b}'),
+                        ]
+                    )
+                    return (connector + dot_a + dot_b).properties(height=height)
+
+                st.markdown(f"<br>#### 🏪 구역별 일평균 방문객 비교 (Top {TOP_N_ZONES})", unsafe_allow_html=True)
+                st.caption(f"🔵 {weather_a}  ·  🔴 {weather_b} — 같은 구역에서 두 점 사이 간격이 클수록 날씨별 차이가 큽니다.")
+                st.altair_chart(
+                    weather_dumbbell_chart(plot_wide, 'Visitors_Per_Day_A', 'Visitors_Per_Day_B', '일평균 방문객 (명)'),
+                    use_container_width=True
+                )
+
+                st.markdown(f"<br>#### ⏱️ 구역별 체류 시간 비교 (Top {TOP_N_ZONES})", unsafe_allow_html=True)
+                st.caption(f"🔵 {weather_a}  ·  🔴 {weather_b} — 90% quantile 기준 (분)")
+                st.altair_chart(
+                    weather_dumbbell_chart(plot_wide, 'Avg_Dwell_Min_A', 'Avg_Dwell_Min_B', '체류 시간 (분)'),
+                    use_container_width=True
+                )
+
+                st.markdown("<br>#### 🔀 날씨별 동시 방문 변화 (Cross-Visitation Delta)", unsafe_allow_html=True)
+
+                def build_co_matrix(df_w):
+                    uv = df_w.drop_duplicates(subset=['real_user_id', 'zone'])
+                    mat = pd.crosstab(uv['real_user_id'], uv['zone'])
+                    co = mat.T.dot(mat)
+                    for z in co.columns:
+                        co.loc[z, z] = 0
+                    return co
+
+                co_a = build_co_matrix(df_a)
+                co_b = build_co_matrix(df_b)
+                common_zones = sorted(set(co_a.index) & set(co_b.columns) & set(co_b.index) & set(co_a.columns))
+                if common_zones:
+                    delta_rows = []
+                    for z1 in common_zones:
+                        for z2 in common_zones:
+                            if z1 != z2:
+                                va = co_a.loc[z1, z2] / max(dates_a, 1)
+                                vb = co_b.loc[z1, z2] / max(dates_b, 1)
+                                delta_rows.append({
+                                    'zone': z1, 'Target Zone': z2,
+                                    'Co_A': va, 'Co_B': vb,
+                                    'Delta': vb - va,
+                                    'Delta_Pct': ((vb - va) / va * 100) if va > 0 else (100 if vb > 0 else 0)
+                                })
+                    delta_df = pd.DataFrame(delta_rows)
+                    top_increase = delta_df.nlargest(8, 'Delta')
+                    top_decrease = delta_df.nsmallest(8, 'Delta')
+
+                    dcol1, dcol2 = st.columns(2)
+                    with dcol1:
+                        st.markdown(f"**{weather_b}에서 급증한 동시 방문 쌍**")
+                        for _, row in top_increase.iterrows():
+                            pct = row['Delta_Pct']
+                            st.markdown(f"""
+                            <div style="background-color:#1E293B; padding:10px 14px; border-radius:6px; border-left:3px solid #10B981; margin-bottom:8px;">
+                                <span style="color:#F8FAFC; font-weight:600;">{row['zone']} → {row['Target Zone']}</span>
+                                <span style="color:#10B981; float:right;">+{row['Delta']:.1f}/일 ({pct:+.0f}%)</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    with dcol2:
+                        st.markdown(f"**{weather_b}에서 감소한 동시 방문 쌍**")
+                        for _, row in top_decrease.iterrows():
+                            pct = row['Delta_Pct']
+                            st.markdown(f"""
+                            <div style="background-color:#1E293B; padding:10px 14px; border-radius:6px; border-left:3px solid #F43F5E; margin-bottom:8px;">
+                                <span style="color:#F8FAFC; font-weight:600;">{row['zone']} → {row['Target Zone']}</span>
+                                <span style="color:#F43F5E; float:right;">{row['Delta']:.1f}/일 ({pct:+.0f}%)</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                st.markdown("<br>#### 💡 날씨 기반 운영 인사이트", unsafe_allow_html=True)
+                merged_delta = pd.merge(
+                    stats_a[['zone', 'Visitors_Per_Day']].rename(columns={'Visitors_Per_Day': 'Vis_A'}),
+                    stats_b[['zone', 'Visitors_Per_Day']].rename(columns={'Visitors_Per_Day': 'Vis_B'}),
+                    on='zone', how='inner'
+                )
+                merged_delta['Change_Pct'] = ((merged_delta['Vis_B'] - merged_delta['Vis_A']) / merged_delta['Vis_A'].replace(0, np.nan)) * 100
+                merged_delta = merged_delta.dropna(subset=['Change_Pct'])
+
+                if not merged_delta.empty:
+                    surge = merged_delta.nlargest(3, 'Change_Pct')
+                    drop = merged_delta.nsmallest(3, 'Change_Pct')
+                    surge_zones = ", ".join([f"**{r['zone']}**(+{r['Change_Pct']:.0f}%)" for _, r in surge.iterrows()])
+                    drop_zones = ", ".join([f"**{r['zone']}**({r['Change_Pct']:.0f}%)" for _, r in drop.iterrows()])
+
+                    if weather_b.lower() == 'rainy' or 'rain' in weather_b.lower():
+                        weather_tip = f"{weather_b}에는 실내·즉석식품 구역 수요가 변동합니다. {surge_zones} 구역 재고를 보강하고, {drop_zones} 구역 인력을 재배치하세요."
+                    elif weather_b.lower() == 'sunny':
+                        weather_tip = f"{weather_b}에는 신선·야외 연관 구역 방문이 늘 수 있습니다. {surge_zones} 구역 매대를 전진 배치하고, {drop_zones} 구역은 프로모션으로 트래픽을 보완하세요."
+                    else:
+                        weather_tip = f"{weather_b} vs {weather_a} 비교 시 {surge_zones} 구역이 상대적으로 강세, {drop_zones} 구역은 약세입니다. 날씨별 발주·인력 계획에 반영하세요."
+
+                    st.markdown(f"""
+                    <div style="background-color:#0F172A; padding:20px; border-radius:8px; border-left:4px solid #38BDF8; color:#F8FAFC;">
+                        <b>📋 {weather_a} → {weather_b} 전환 시 운영 브리핑</b><br><br>
+                        {weather_tip}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                try:
+                    trend_df = pd.read_csv("time_trend_light.csv")
+                    weather_map = {normalize_date_str(row['Date']): row['Weather'] for _, row in df_weather.iterrows()}
+                    trend_df['Label'] = trend_df['date'].apply(lambda x: weather_map.get(normalize_date_str(x), 'Unknown'))
+                    trend_filtered = trend_df[trend_df['Label'].isin([weather_a, weather_b])].copy()
+                    if not trend_filtered.empty:
+                        base_date = pd.to_datetime("2026-01-01")
+                        trend_filtered['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + trend_filtered['time_str'])
+                        trend_filtered['Trend'] = trend_filtered.groupby('Label')['visitors'].transform(
+                            lambda x: x.rolling(window=3, min_periods=1).mean()
+                        )
+                        st.markdown("<br>#### 📈 시간대별 트래픽 패턴 (날씨별)", unsafe_allow_html=True)
+                        trend_chart = alt.Chart(trend_filtered).mark_line(interpolate='monotone', strokeWidth=3).encode(
+                            x=alt.X('Time:T', title='Time', axis=alt.Axis(format='%H:%M', gridColor='#475569', domainColor='#334155')),
+                            y=alt.Y('Trend:Q', title='평균 동시 방문객', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                            color=alt.Color('Label:N', scale=alt.Scale(domain=[weather_a, weather_b], range=['#38BDF8', '#F43F5E']), legend=alt.Legend(title="날씨")),
+                            tooltip=[alt.Tooltip('Time:T', format='%H:%M'), 'Label', alt.Tooltip('Trend:Q', format='.1f')]
+                        ).properties(height=320)
+                        st.altair_chart(trend_chart, use_container_width=True)
+                except Exception:
+                    pass
+
+elif menu == "Journey Paths":
+    st.title("Customer Journey Path Analysis")
+    st.markdown("고객의 **전체 쇼핑 동선(3~5단계)** 을 추출하여 가장 많이 반복되는 경로 Top N을 분석합니다.")
+
+    if df_all is None or 'date' not in df_all.columns:
+        st.error("세션 데이터를 불러올 수 없습니다.")
+    else:
+        available_dates = sorted(df_all['date'].unique().tolist(), key=sort_date_smart)
+
+        col_j1, col_j2, col_j3, col_j4 = st.columns([1.2, 1, 1, 1])
+        with col_j1:
+            journey_date = st.selectbox(
+                "분석 날짜",
+                ["All Dates (Cumulative)"] + available_dates,
+                format_func=format_date_option,
+                key="journey_date"
+            )
+        with col_j2:
+            path_length = st.slider("동선 단계 수", min_value=3, max_value=5, value=4, key="path_length")
+        with col_j3:
+            top_n_paths = st.slider("Top N 경로", min_value=5, max_value=20, value=10, step=1, key="top_n_paths")
+        with col_j4:
+            filter_start = st.selectbox("시작 구역 필터", ["전체"] + list(ZONES.keys()), key="journey_start")
+
+        if journey_date == "All Dates (Cumulative)":
+            journey_df_raw = df_all
+        else:
+            journey_df_raw = df_all[df_all['date'].apply(lambda x: safe_date_match(x, journey_date))]
+
+        if journey_df_raw.empty:
+            st.info("선택한 조건에 해당하는 데이터가 없습니다.")
+        else:
+            with st.spinner("고객 동선 시퀀스를 추출하는 중..."):
+                path_stats = build_journey_sequences(journey_df_raw, path_length=path_length)
+
+                if filter_start != "전체":
+                    path_stats = path_stats[path_stats['path_tuple'].apply(lambda p: p[0] == filter_start)]
+
+                if path_stats.empty:
+                    st.info("분석 가능한 동선 데이터가 없습니다. (최소 2개 이상의 구역 방문 필요)")
+                else:
+                    total_journeys = path_stats['count'].sum()
+                    unique_paths = len(path_stats)
+                    top_paths = path_stats.head(top_n_paths).copy()
+                    top_paths['pct'] = (top_paths['count'] / total_journeys) * 100
+                    top_paths['rank'] = range(1, len(top_paths) + 1)
+
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("총 분석 동선", f"{total_journeys:,}")
+                    m2.metric("고유 경로 수", f"{unique_paths:,}")
+                    m3.metric(f"Top {top_n_paths} 점유율", f"{top_paths['count'].sum() / total_journeys * 100:.1f}%")
+
+                    st.markdown("<br>#### 🏆 Top Shopping Routes", unsafe_allow_html=True)
+
+                    for _, row in top_paths.iterrows():
+                        bar_width = min(row['pct'] * 3, 100)
+                        st.markdown(f"""
+                        <div style="background-color:#1E293B; padding:14px 18px; border-radius:8px; border:1px solid #334155; margin-bottom:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="color:#94A3B8; font-size:13px;">#{int(row['rank'])}</span>
+                                <span style="color:#38BDF8; font-weight:700; font-size:15px;">{row['path_str']}</span>
+                                <span style="color:#F8FAFC; font-weight:600;">{int(row['count']):,}명 ({row['pct']:.1f}%)</span>
+                            </div>
+                            <div style="width:100%; background-color:#334155; border-radius:6px; height:8px;">
+                                <div style="width:{bar_width}%; background-color:#8B5CF6; height:100%; border-radius:6px;"></div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    st.markdown("<br>#### 📊 경로 빈도 차트", unsafe_allow_html=True)
+                    chart_paths = top_paths.copy()
+                    chart_paths['path_short'] = chart_paths['path_str'].apply(
+                        lambda s: s if len(s) <= 40 else s[:37] + '...'
+                    )
+                    path_bar = alt.Chart(chart_paths).mark_bar(color='#8B5CF6', cornerRadiusEnd=4).encode(
+                        x=alt.X('count:Q', title='고객 수', axis=alt.Axis(gridColor='#334155', domainColor='#334155')),
+                        y=alt.Y('path_short:N', sort='-x', title=None),
+                        tooltip=[
+                            alt.Tooltip('path_str:N', title='전체 경로'),
+                            alt.Tooltip('count:Q', title='고객 수'),
+                            alt.Tooltip('pct:Q', format='.1f', title='비율 (%)')
+                        ]
+                    ).properties(height=max(280, len(chart_paths) * 32))
+                    st.altair_chart(path_bar, use_container_width=True)
+
+                    st.markdown("<br>#### 🌊 Journey Flow Diagram (단계별 Sankey)", unsafe_allow_html=True)
+                    link_df = paths_to_step_links(top_paths)
+
+                    if not link_df.empty:
+                        flow_col1, flow_col2 = st.columns([2.5, 1])
+                        with flow_col1:
+                            with st.spinner("플로우 다이어그램 렌더링..."):
+                                G_flow = nx.DiGraph()
+                                for _, lk in link_df.iterrows():
+                                    G_flow.add_edge(lk['source_label'], lk['target_label'], weight=lk['value'])
+
+                                step_of = {}
+                                for node in G_flow.nodes():
+                                    step_num = int(node.split('Step ')[1].rstrip(')'))
+                                    step_of[node] = step_num
+
+                                nodes_by_step = {}
+                                for node, step in step_of.items():
+                                    nodes_by_step.setdefault(step, []).append(node)
+
+                                pos = {}
+                                for step, nodes in sorted(nodes_by_step.items()):
+                                    nodes_sorted = sorted(nodes, key=lambda n: -G_flow.degree(n, weight='weight'))
+                                    for i, node in enumerate(nodes_sorted):
+                                        x = (step - 1) * 2.5
+                                        y = i * 1.2 - (len(nodes_sorted) - 1) * 0.6
+                                        pos[node] = (x, y)
+
+                                fig_j, ax_j = plt.subplots(figsize=(12, 7), dpi=150)
+                                fig_j.patch.set_facecolor('#0F172A')
+                                ax_j.set_facecolor('#0F172A')
+
+                                max_w = link_df['value'].max()
+                                step_colors = ['#38BDF8', '#10B981', '#F59E0B', '#F43F5E', '#A78BFA']
+
+                                for step in sorted(nodes_by_step.keys()):
+                                    ax_j.axvline(x=(step - 1) * 2.5, color='#334155', linestyle='--', alpha=0.4, zorder=0)
+                                    ax_j.text(
+                                        (step - 1) * 2.5, max(y for _, y in pos.values()) + 1.2 if pos else 1,
+                                        f'Step {step}', ha='center', color=step_colors[(step - 1) % len(step_colors)],
+                                        fontsize=12, fontweight='bold'
+                                    )
+
+                                for u, v, data in G_flow.edges(data=True):
+                                    w = data['weight']
+                                    x1, y1 = pos[u]
+                                    x2, y2 = pos[v]
+                                    alpha = 0.3 + 0.7 * (w / max_w)
+                                    width = 0.5 + 4.0 * (w / max_w)
+                                    step_from = step_of[u]
+                                    color = step_colors[(step_from - 1) % len(step_colors)]
+                                    ax_j.annotate(
+                                        '', xy=(x2 - 0.15, y2), xytext=(x1 + 0.15, y1),
+                                        arrowprops=dict(
+                                            arrowstyle='->', color=color, lw=width,
+                                            alpha=alpha, connectionstyle='arc3,rad=0.15'
+                                        )
+                                    )
+
+                                node_weights = dict(G_flow.degree(weight='weight'))
+                                max_nw = max(node_weights.values()) if node_weights else 1
+                                for node, (x, y) in pos.items():
+                                    step = step_of[node]
+                                    zone_name = node.split(' (Step')[0]
+                                    size = 400 + 1600 * (node_weights.get(node, 0) / max_nw)
+                                    ax_j.scatter(
+                                        x, y, s=size, c=step_colors[(step - 1) % len(step_colors)],
+                                        edgecolors='#F8FAFC', linewidths=1.2, zorder=5, alpha=0.9
+                                    )
+                                    ax_j.text(
+                                        x, y, zone_name, ha='center', va='center',
+                                        fontsize=7, fontweight='bold', color='#020617', zorder=6
+                                    )
+
+                                ax_j.axis('off')
+                                ax_j.set_xlim(-0.8, (path_length - 1) * 2.5 + 0.8)
+                                st.pyplot(fig_j, facecolor='#0F172A')
+
+                        with flow_col2:
+                            st.markdown("**🔗 핵심 구간 전환 Top 5**")
+                            for _, lk in link_df.head(5).iterrows():
+                                st.markdown(f"""
+                                <div style="background-color:#1E293B; padding:10px 14px; border-radius:6px; border-left:3px solid #8B5CF6; margin-bottom:8px;">
+                                    <span style="color:#F8FAFC; font-size:13px; font-weight:600;">{lk['source']} → {lk['target']}</span><br>
+                                    <span style="color:#38BDF8; font-size:12px;">{int(lk['value']):,}명</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            st.caption("Top 경로에서 집계된 단계 간 이동 횟수입니다.")
+
+                    st.markdown("<br>#### 🗺️ Top 1 경로 매장 오버레이", unsafe_allow_html=True)
+                    if not top_paths.empty and os.path.exists('map_image.jpg'):
+                        top1_path = top_paths.iloc[0]['path_tuple']
+                        fig_map, ax_map = plt.subplots(figsize=(10, 7), dpi=150)
+                        fig_map.patch.set_facecolor('#0F172A')
+                        ax_map.set_facecolor('#0F172A')
+                        ax_map.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.4)
+
+                        path_coords = []
+                        for zone_name in top1_path:
+                            if zone_name in ZONES:
+                                z = ZONES[zone_name]
+                                cx = (z['x_min'] + z['x_max']) / 2
+                                cy = (z['y_min'] + z['y_max']) / 2
+                                path_coords.append((cx, cy, zone_name))
+
+                        step_cmap = ['#38BDF8', '#10B981', '#F59E0B', '#F43F5E']
+                        for i, (cx, cy, zn) in enumerate(path_coords):
+                            ax_map.scatter(cx, cy, s=500, c=step_cmap[i % len(step_cmap)],
+                                           edgecolors='#F8FAFC', linewidths=2, zorder=5)
+                            ax_map.text(cx, cy - 18, f"{i+1}", ha='center', va='bottom',
+                                        fontsize=11, fontweight='bold', color='#F8FAFC', zorder=6)
+                            ax_map.annotate(zn, (cx, cy), xytext=(8, 8), textcoords='offset points',
+                                            fontsize=9, fontweight='bold', color='#F8FAFC',
+                                            bbox=dict(facecolor='#1E293B', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2'))
+
+                        for i in range(len(path_coords) - 1):
+                            x1, y1, _ = path_coords[i]
+                            x2, y2, _ = path_coords[i + 1]
+                            ax_map.annotate(
+                                '', xy=(x2, y2), xytext=(x1, y1),
+                                arrowprops=dict(arrowstyle='->', color='#A78BFA', lw=3, alpha=0.85,
+                                                connectionstyle='arc3,rad=0.1')
+                            )
+
+                        ax_map.set_xlim(0, 663)
+                        ax_map.set_ylim(500, 0)
+                        ax_map.axis('off')
+                        st.pyplot(fig_map, facecolor='#0F172A')
+                        st.caption(f"가장 많은 고객({int(top_paths.iloc[0]['count']):,}명, {top_paths.iloc[0]['pct']:.1f}%)이 따르는 경로입니다.")
+
+                    st.markdown("<br>#### 💡 동선 기반 운영 인사이트", unsafe_allow_html=True)
+                    if len(top_paths) >= 2:
+                        top1_zones = set(top_paths.iloc[0]['path_tuple'])
+                        top2_zones = set(top_paths.iloc[1]['path_tuple'])
+                        shared = top1_zones & top2_zones
+                        shared_str = ", ".join([f"**{z}**" for z in shared]) if shared else "공통 구역 없음"
+
+                        if not link_df.empty:
+                            top_transition = link_df.iloc[0]
+                            trans_insight = f"가장 강한 구간 전환은 **{top_transition['source']} → {top_transition['target']}** ({int(top_transition['value']):,}명)입니다."
+                        else:
+                            trans_insight = ""
+
+                        insight_j = (
+                            f"Top 1 경로 **{top_paths.iloc[0]['path_str']}** 가 전체의 **{top_paths.iloc[0]['pct']:.1f}%** 를 차지합니다. "
+                            f"Top 2 경로와 공통 구역: {shared_str}. "
+                            f"{trans_insight} "
+                            f"공통 구역 매대를 동선 중심에 배치하고, Top 1 경로의 마지막 구역 인근에 연관 상품을 배치하면 크로스셀링 효과를 높일 수 있습니다."
+                        )
+                        st.markdown(f"""
+                        <div style="background-color:#0F172A; padding:20px; border-radius:8px; border-left:4px solid #8B5CF6; color:#F8FAFC;">
+                            {insight_j}
+                        </div>
+                        """, unsafe_allow_html=True)
 
 elif menu == "Heatmap Analysis":
     st.title("Heatmap Analysis")
@@ -992,8 +1688,8 @@ elif menu == "AI 맞춤 조건 시뮬레이터":
         st.markdown("#### ⚙️ 시뮬레이션 환경 설정")
         col1, col2, col3, col4 = st.columns(4)
         with col1: 
-            sim_weather = st.selectbox("날씨 설정", ["Clear", "Cloudy", "Rainy", "Snow"])
-            w_val = {"Clear":0, "Cloudy":1, "Rainy":2, "Snow":3}[sim_weather]
+            sim_weather = st.selectbox("날씨 설정", ["Sunny", "Cloudy", "Rainy", "Snow"])
+            w_val = {"Sunny": 0, "Cloudy": 1, "Rainy": 2, "Snow": 3}[sim_weather]
         with col2: 
             sim_weekend = st.selectbox("요일 구분", ["평일", "주말/공휴일"])
             wk_val = 1 if "주말" in sim_weekend else 0
@@ -1047,8 +1743,11 @@ elif menu == "AI 맞춤 조건 시뮬레이터":
                         
                         step_zone_counts = []
                         for z_col in zone_cols:
-                            kor_zone_name = AI_ZONE_MAP.get(z_col, z_col)
-                            visitors = time_filtered[time_filtered['zone'] == kor_zone_name]['real_user_id'].nunique()
+                            kor_zone_names = session_zones_for_ai_zone(z_col)
+                            if kor_zone_names:
+                                visitors = time_filtered[time_filtered['zone'].isin(kor_zone_names)]['real_user_id'].nunique()
+                            else:
+                                visitors = 0
                             step_zone_counts.append(visitors)
                         
                         step_features = step_zone_counts + [w_val, wk_val, p_time.hour, p_time.minute]
@@ -1070,7 +1769,7 @@ elif menu == "AI 맞춤 조건 시뮬레이터":
                     dummy[0, :pred_scaled.shape[1]] = pred_scaled[0] 
                     pred_actual = scaler.inverse_transform(dummy)[0, :pred_scaled.shape[1]]
                     
-                    preds = {(AI_ZONE_MAP.get(z, z) or z): max(0, int(v)) for z, v in zip(zone_cols, pred_actual)}
+                    preds = {ai_zone_display_name(z): max(0, int(v)) for z, v in zip(zone_cols, pred_actual)}
 
                     # 4. 시각화
                     swards_df = pd.read_csv('swards (1).csv')
@@ -1123,54 +1822,6 @@ elif menu == "AI 맞춤 조건 시뮬레이터":
                         
     except Exception as e: 
         st.error(f"LSTM 로드 및 예측 실패: {e}")
-
-# ✨ [LSTM AI] 실시간 시계열 기반 미래 히트맵 예측
-elif menu == "Future Heatmap (LSTM)":
-    st.title("🔮 Future Heatmap (LSTM AI)")
-    st.markdown("LSTM 딥러닝 모델이 날씨와 시계열 트래픽 패턴을 분석하여 **가까운 미래의 구역별 혼잡도**를 예측합니다.")
-
-    swards_df = pd.read_csv('swards (1).csv')
-    with st.container():
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1: future_weather = st.selectbox("가상 기상 상태", ["Clear", "Cloudy", "Rainy", "Snow"], index=2, key="fh_weather")
-        with col_f2: is_weekend = st.checkbox("주말/공휴일 적용", value=False, key="fh_weekend")
-        with col_f3: target_time_label = st.selectbox("예측 목표 시점", ["+10분 뒤", "+30분 뒤", "+1시간 뒤"], index=1)
-    
-    if st.button("🚀 LSTM 예측 히트맵 렌더링", use_container_width=True, key="fh_btn"):
-        with st.spinner("미래 트래픽 패턴을 시뮬레이션 중..."):
-            import random
-            base = random.randint(40, 60) + (70 if is_weekend else 0)
-            time_mult = 1.2 if target_time_label == "+30분 뒤" else (1.5 if target_time_label == "+1시간 뒤" else 1.0)
-            
-            p_dict = {
-                "Noodle": int((base + (50 if future_weather=="Rainy" else 10)) * time_mult),
-                "Checkout": int((base + 120) * time_mult),
-                "Toy": int((80 if is_weekend else 15) * time_mult),
-                "Meal kit": int((base + 20) * time_mult)
-            }
-            
-            fx, fy = [], []
-            zc = swards_df.groupby('description')[['x', 'y']].mean().to_dict('index')
-            for z, v in p_dict.items():
-                if z in zc:
-                    fx.extend(np.random.normal(zc[z]['x'], 22, v))
-                    fy.extend(np.random.normal(zc[z]['y'], 22, v))
-            
-            fig, ax = plt.subplots(figsize=(10, 7), dpi=150)
-            fig.patch.set_facecolor('#0F172A')
-            ax.set_facecolor('#0F172A')
-            if os.path.exists('map_image.jpg'): 
-                ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
-            
-            if fx:
-                h, _, _ = np.histogram2d(fy, fx, bins=[100, 132], range=[[0, 500], [0, 663]])
-                k = gaussian_filter(h, 4.0)
-                mv = np.max(k)
-                if mv > 0: 
-                    ax.imshow(k, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.75, vmin=mv*0.05, vmax=mv)
-            ax.axis('off')
-            st.pyplot(fig)
-            st.info(f"ℹ️ {target_time_label} 예측: {future_weather} 환경에서 주요 결제 및 식품 코너 혼잡도가 높게 유지될 것으로 분석됩니다.")
 
 # ✨ [완성판] Layout Simulator (동선 복구 + 지색 개선 + 전문 리포트 추가)
 elif menu == "Layout Simulator":
