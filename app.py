@@ -872,6 +872,21 @@ elif menu == "Customer Persona":
                                     tip = f"**{top_zones}** 구역에 표준형 고객용 기획전·2+1 프로모션을 집중 배치하세요."
                                 strategy_cards.append((p_name, color_map[p_name], tip))
 
+                        # ✨ [LLM 연동] 페르소나 분석 결과를 session_state에 저장
+                        persona_top_zones = {}
+                        for p_name in color_map.keys():
+                            p_top_for_save = top5_per_persona[top5_per_persona['Persona'] == p_name]
+                            if not p_top_for_save.empty:
+                                persona_top_zones[p_name] = p_top_for_save.sort_values('visit_rate', ascending=False)['zone'].head(3).tolist()
+                        st.session_state['persona_summary'] = {
+                            'date': selected_date,
+                            'counts_pct': {
+                                p_name: (int(counts.get(p_name, 0)), (counts.get(p_name, 0) / total_customers * 100) if total_customers > 0 else 0)
+                                for p_name in color_map.keys()
+                            },
+                            'top_zones': persona_top_zones,
+                        }
+
                         for p_name, p_color, tip in strategy_cards:
                             st.markdown(f"""
                             <div style="background-color: #1E293B; padding: 14px 18px; border-radius: 8px; border-left: 4px solid {p_color}; margin-bottom: 10px;">
@@ -1088,6 +1103,14 @@ elif menu == "Weather Impact":
                     drop = merged_delta.nsmallest(3, 'Change_Pct')
                     surge_zones = ", ".join([f"**{r['zone']}**(+{r['Change_Pct']:.0f}%)" for _, r in surge.iterrows()])
                     drop_zones = ", ".join([f"**{r['zone']}**({r['Change_Pct']:.0f}%)" for _, r in drop.iterrows()])
+
+                    # ✨ [LLM 연동] 날씨 영향 분석 결과를 session_state에 저장
+                    st.session_state['weather_impact_summary'] = {
+                        'weather_a': weather_a, 'weather_b': weather_b,
+                        'visitors_a': sum_a['visitors'], 'visitors_b': sum_b['visitors'],
+                        'surge_zones': surge[['zone', 'Change_Pct']].to_dict('records'),
+                        'drop_zones': drop[['zone', 'Change_Pct']].to_dict('records'),
+                    }
 
                     if weather_b.lower() == 'rainy' or 'rain' in weather_b.lower():
                         weather_tip = f"{weather_b}에는 실내·즉석식품 구역 수요가 변동합니다. {surge_zones} 구역 재고를 보강하고, {drop_zones} 구역 인력을 재배치하세요."
@@ -1359,6 +1382,15 @@ elif menu == "Journey Paths":
                             f"{trans_insight} "
                             f"공통 구역 매대를 동선 중심에 배치하고, Top 1 경로의 마지막 구역 인근에 연관 상품을 배치하면 크로스셀링 효과를 높일 수 있습니다."
                         )
+
+                        # ✨ [LLM 연동] 동선 분석 결과를 session_state에 저장
+                        st.session_state['journey_summary'] = {
+                            'date': journey_date,
+                            'top1_path': top_paths.iloc[0]['path_str'],
+                            'top1_pct': top_paths.iloc[0]['pct'],
+                            'total_journeys': int(total_journeys),
+                            'top_transition': f"{link_df.iloc[0]['source']} → {link_df.iloc[0]['target']} ({int(link_df.iloc[0]['value']):,}명)" if not link_df.empty else None,
+                        }
                         st.markdown(f"""
                         <div style="background-color:#0F172A; padding:20px; border-radius:8px; border-left:4px solid #8B5CF6; color:#F8FAFC;">
                             {insight_j}
@@ -1403,6 +1435,20 @@ elif menu == "Heatmap Analysis":
                     if max_val > 0: ax.imshow(heatmap_smoothed, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=max_val*0.01, vmax=max_val*(red_sens/100.0))
                     ax.axis('off')
                     st.pyplot(fig, facecolor='#0F172A')
+
+                    # ✨ [LLM 연동] 해당 시점 구역별 혼잡도를 집계하여 session_state에 저장
+                    zone_counts_snapshot = {}
+                    for zname, zb in ZONES.items():
+                        cnt = len(df_exact[(df_exact['x'] >= zb['x_min']) & (df_exact['x'] <= zb['x_max']) &
+                                            (df_exact['y'] >= zb['y_min']) & (df_exact['y'] <= zb['y_max'])])
+                        if cnt > 0:
+                            zone_counts_snapshot[zname] = cnt
+                    top_congested = sorted(zone_counts_snapshot.items(), key=lambda x: x[1], reverse=True)[:5]
+                    st.session_state['heatmap_summary'] = {
+                        'date': selected_date,
+                        'time': str(selected_time),
+                        'top_congested_zones': top_congested,
+                    }
 
 elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
@@ -1954,6 +2000,13 @@ elif menu == "Layout Simulator":
                         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
                         st.caption("🟢 초록: 트래픽 증가 구역\n\n🔴 빨강: 트래픽 감소 구역")
 
+                        # ✨ [LLM 연동] 레이아웃 시뮬레이션 결과를 session_state에 저장
+                        st.session_state['layout_sim_summary'] = {
+                            'swap_a': swap_a, 'swap_b': swap_b,
+                            'diff_a': diff_a, 'diff_b': diff_b,
+                            'weather': sim_weather, 'day': sim_day, 'holiday': sim_holiday,
+                        }
+
                     # ✨ [신규] 전문 데이터 분석 리포트 섹션 추가
                     st.markdown("<hr style='margin: 30px 0; border-color: #334155;'>", unsafe_allow_html=True)
                     st.markdown("### 📊 시뮬레이션 심층 분석 보고서")
@@ -2074,7 +2127,48 @@ elif menu == "LLM Assistant":
                     system_context += f"\n- [최신 수요 예측 시뮬레이션 결과]\n"
                     system_context += f"  * 가상 환경: {st.session_state.get('sim_weather', '알 수 없음')}, {st.session_state.get('sim_day', '알 수 없음')}\n"
                     system_context += f"  * 폭발적 트래픽 집중 예상 구역 Top 3: {pred_str}\n"
-                    system_context += "\n위 시뮬레이션 결과를 최우선으로 반영하여, 잉여 인력 배치, 결품 방지를 위한 재고 보충, 미끼 상품 위치 조정 전략을 구체적이고 실무적인 톤으로 조언해 주세요."
+
+                # 3. [신규] 고객 페르소나(Customer Persona) 분석 결과 주입
+                if 'persona_summary' in st.session_state:
+                    ps = st.session_state['persona_summary']
+                    system_context += f"\n- [고객 페르소나 분석 결과 - {ps['date']}]\n"
+                    for p_name, (cnt, pct) in ps['counts_pct'].items():
+                        top_zones_str = ", ".join(ps['top_zones'].get(p_name, [])) or "데이터 없음"
+                        system_context += f"  * {p_name}: {pct:.1f}% ({cnt:,}명), 대표 구역: {top_zones_str}\n"
+
+                # 4. [신규] 날씨 영향(Weather Impact) 분석 결과 주입
+                if 'weather_impact_summary' in st.session_state:
+                    ws = st.session_state['weather_impact_summary']
+                    surge_str = ", ".join([f"{r['zone']}(+{r['Change_Pct']:.0f}%)" for r in ws['surge_zones']]) or "없음"
+                    drop_str = ", ".join([f"{r['zone']}({r['Change_Pct']:.0f}%)" for r in ws['drop_zones']]) or "없음"
+                    system_context += f"\n- [날씨 영향 분석: {ws['weather_a']} vs {ws['weather_b']}]\n"
+                    system_context += f"  * 방문객: {ws['weather_a']} {ws['visitors_a']:,}명 vs {ws['weather_b']} {ws['visitors_b']:,}명\n"
+                    system_context += f"  * {ws['weather_b']}일 때 급증 구역: {surge_str}\n"
+                    system_context += f"  * {ws['weather_b']}일 때 감소 구역: {drop_str}\n"
+
+                # 5. [신규] 고객 동선(Journey Paths) 분석 결과 주입
+                if 'journey_summary' in st.session_state:
+                    js = st.session_state['journey_summary']
+                    system_context += f"\n- [고객 동선 분석 - {js['date']}]\n"
+                    system_context += f"  * 최다 경로: {js['top1_path']} (전체의 {js['top1_pct']:.1f}%, 총 {js['total_journeys']:,}건 중)\n"
+                    if js['top_transition']:
+                        system_context += f"  * 핵심 전환 구간: {js['top_transition']}\n"
+
+                # 6. [신규] 혼잡도 히트맵(Heatmap Analysis) 스냅샷 결과 주입
+                if 'heatmap_summary' in st.session_state:
+                    hs = st.session_state['heatmap_summary']
+                    top_str = ", ".join([f"{z}({c}건)" for z, c in hs['top_congested_zones']]) or "데이터 없음"
+                    system_context += f"\n- [혼잡도 히트맵 스냅샷 - {hs['date']} {hs['time']}]\n"
+                    system_context += f"  * 최다 혼잡 구역: {top_str}\n"
+
+                # 7. [신규] 매대 배치 시뮬레이션(Layout Simulator) 결과 주입
+                if 'layout_sim_summary' in st.session_state:
+                    ls = st.session_state['layout_sim_summary']
+                    system_context += f"\n- [매대 교체 시뮬레이션: {ls['swap_a']} ↔ {ls['swap_b']}]\n"
+                    system_context += f"  * 조건: {ls['weather']}, {ls['day']}, 공휴일({ls['holiday']})\n"
+                    system_context += f"  * 결과: {ls['swap_a']} {ls['diff_a']:+.1f}명, {ls['swap_b']} {ls['diff_b']:+.1f}명\n"
+
+                system_context += "\n위의 모든 분석 결과(수요예측, 페르소나, 날씨영향, 동선, 혼잡도, 레이아웃 시뮬레이션 중 존재하는 항목)를 종합적으로 반영하여, 잉여 인력 배치, 결품 방지를 위한 재고 보충, 미끼 상품 위치 조정 등 구체적이고 실무적인 전략을 조언해 주세요. 단, 사용자가 아직 실행하지 않은 분석(위 목록에 없는 항목)에 대해서는 추측하지 말고, 필요하다면 해당 탭을 먼저 실행해 달라고 안내해 주세요."
                 
                 model = genai.GenerativeModel(model_name=ai_model_name, system_instruction=system_context)
                 if "chat_history" not in st.session_state: st.session_state.chat_history = []
