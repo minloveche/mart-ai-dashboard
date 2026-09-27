@@ -223,6 +223,57 @@ def attach_weather_to_sessions(df_sessions, df_weather):
     df['weather'] = df['date'].apply(lambda x: weather_map.get(normalize_date_str(x), 'Unknown'))
     return df
 
+def weather_label_matches(raw_weather, target_weather):
+    """'Snow' vs 'Snowy'처럼 원본 CSV 표기가 UI 옵션과 다를 수 있어
+    대소문자 무시 + 어근(root) 포함 여부로 유연하게 비교합니다."""
+    if raw_weather is None or target_weather is None:
+        return False
+    r = str(raw_weather).strip().lower()
+    t = str(target_weather).strip().lower()
+    if r == t:
+        return True
+    r_root = r[:-1] if r.endswith('y') else r
+    t_root = t[:-1] if t.endswith('y') else t
+    return r_root == t_root or t_root in r or r_root in t
+
+def get_condition_matched_hourly_ratio(trend_df, df_weather, target_weather, is_weekend_target):
+    """미래 예측 조건(요일유형 + 날씨)과 가장 유사한 과거 날짜들만 골라
+    시간대별 방문객 비율(합=1) 곡선을 만듭니다. 매칭되는 과거 데이터가 없으면
+    조건을 단계적으로 완화(날씨만 → 요일유형만 → 전체 평균)합니다."""
+    df = trend_df.copy()
+    if df_weather is not None and not df_weather.empty:
+        weather_map = {normalize_date_str(row['Date']): row['Weather'] for _, row in df_weather.iterrows()}
+        df['weather'] = df['date'].apply(lambda x: weather_map.get(normalize_date_str(x), 'Unknown'))
+    else:
+        df['weather'] = 'Unknown'
+
+    def weekday_flag(date_str):
+        try:
+            return 1 if pd.to_datetime(normalize_date_str(date_str)).dayofweek >= 5 else 0
+        except Exception:
+            return None
+
+    df['is_weekend'] = df['date'].apply(weekday_flag)
+    df['weather_hit'] = df['weather'].apply(lambda w: weather_label_matches(w, target_weather))
+
+    subset = df[df['weather_hit'] & (df['is_weekend'] == is_weekend_target)]
+    match_level = "요일유형+날씨 일치"
+    if subset.empty:
+        subset = df[df['weather_hit']]
+        match_level = "날씨만 일치"
+    if subset.empty:
+        subset = df[df['is_weekend'] == is_weekend_target]
+        match_level = "요일유형만 일치"
+    if subset.empty:
+        subset = df
+        match_level = "전체 평균 (유사 조건 데이터 없음)"
+
+    matched_days = subset['date'].nunique()
+    ratio = subset.groupby('time_str')['visitors'].sum()
+    if ratio.sum() > 0:
+        ratio = ratio / ratio.sum()
+    return ratio, match_level, matched_days
+
 def dedupe_consecutive_zones(zones):
     if not zones:
         return []
@@ -1454,7 +1505,7 @@ elif menu == "Demand Forecast":
     st.title("Demand Forecast (XGBoost AI)")
     with st.container():
         row1_col1, row1_col2 = st.columns(2)
-        with row1_col1: future_weather = st.selectbox("Weather", ["Sunny", "Cloudy", "Rainy"])
+        with row1_col1: future_weather = st.selectbox("Weather", ["Sunny", "Cloudy", "Rainy", "Snowy"])
         with row1_col2: future_dayname = st.selectbox("Day of Week", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         is_weekend = 1 if future_dayname in ["Saturday", "Sunday"] else 0
 
@@ -1473,7 +1524,15 @@ elif menu == "Demand Forecast":
                 target_zones = [f.replace('zone_', '') for f in features if f.startswith('zone_')]
                 if not target_zones: 
                     target_zones = list(ZONES.keys())
-                    
+
+                # ✨ [Snowy 지원] XGBoost가 실제로 눈(Snowy) 조건으로 학습되었는지 확인
+                weather_col_map = {"Sunny": "Weather_Clean_Sunny", "Cloudy": "Weather_Clean_Cloudy",
+                                    "Rainy": "Weather_Clean_Rainy", "Snowy": "Weather_Clean_Snowy"}
+                target_weather_col = weather_col_map.get(future_weather, f"Weather_Clean_{future_weather}")
+                weather_col_supported = target_weather_col in features
+                if future_weather == "Snowy" and not weather_col_supported:
+                    st.warning(f"⚠️ 현재 XGBoost 모델(`ai_forecaster.pkl`)에는 '{future_weather}' 조건이 학습되어 있지 않습니다. 눈 관련 트래픽 변동은 반영되지 않고, 날씨 변수가 없는 기본(평시) 상태로 예측됩니다. 정확한 예측을 위해서는 눈 오는 날 데이터를 포함해 모델을 재학습해야 합니다.")
+
                 predictions = {}
                 inputs_dict = {} 
                 
@@ -1481,9 +1540,7 @@ elif menu == "Demand Forecast":
                     input_data = pd.DataFrame(columns=features)
                     input_data.loc[0] = 0 
                     input_data['Is_Weekend'] = is_weekend; input_data['Is_Holiday'] = is_holiday; input_data['Is_Working_Holiday'] = 1 if (is_holiday and not is_weekend) else 0; input_data['Is_Weekend_Holiday'] = 1 if (is_holiday and is_weekend) else 0; input_data['Is_Long_Holiday'] = is_long_holiday; input_data['Is_Pre_Holiday'] = is_pre_holiday; input_data['Is_Post_Holiday'] = is_post_holiday
-                    if "Sunny" in future_weather: input_data['Weather_Clean_Sunny'] = 1
-                    elif "Cloudy" in future_weather: input_data['Weather_Clean_Cloudy'] = 1
-                    elif "Rainy" in future_weather: input_data['Weather_Clean_Rainy'] = 1
+                    if weather_col_supported: input_data[target_weather_col] = 1
                     if f"DayName_Clean_{future_dayname}" in input_data.columns: input_data[f"DayName_Clean_{future_dayname}"] = 1
                     
                     if f"zone_{zone}" in input_data.columns: 
@@ -1564,7 +1621,20 @@ elif menu == "Demand Forecast":
 
                 try:
                     trend_df = pd.read_csv("time_trend_light.csv")
-                    hourly_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
+
+                    # 평소(전체 기간 평균) 비율 — 베이스라인용
+                    overall_ratio = trend_df.groupby('time_str')['visitors'].sum() / trend_df['visitors'].sum()
+
+                    # ✨ [신규] 미래 조건(요일유형+날씨)과 유사한 과거 날짜만 골라 만든 시간대별 비율
+                    matched_ratio, match_level, matched_days = get_condition_matched_hourly_ratio(
+                        trend_df, df_weather, future_weather, is_weekend
+                    )
+                    matched_ratio = matched_ratio.reindex(overall_ratio.index, fill_value=0)
+                    if matched_ratio.sum() > 0:
+                        matched_ratio = matched_ratio / matched_ratio.sum()
+                    else:
+                        matched_ratio = overall_ratio
+
                     total_predicted = sum(predictions.values()) 
                     
                     base_total_predicted = 0
@@ -1578,9 +1648,9 @@ elif menu == "Demand Forecast":
                         base_total_predicted += ai_model.predict(base_input)[0]
 
                     pred_curve = pd.DataFrame({
-                        'Time_Str': hourly_ratio.index,
-                        'Expected Visitors': hourly_ratio.values * total_predicted,
-                        'Baseline': hourly_ratio.values * base_total_predicted
+                        'Time_Str': matched_ratio.index,
+                        'Expected Visitors': matched_ratio.values * total_predicted,
+                        'Baseline': overall_ratio.values * base_total_predicted
                     })
                     
                     pred_curve['Upper Bound'] = pred_curve['Expected Visitors'] * 1.15
@@ -1589,7 +1659,8 @@ elif menu == "Demand Forecast":
                     base_date = pd.to_datetime("2026-01-01")
                     pred_curve['Time'] = pd.to_datetime(base_date.strftime('%Y-%m-%d') + ' ' + pred_curve['Time_Str'])
                     
-                    st.markdown("<br>#### Forecasted Traffic Curve (신뢰 구간 및 평소 대비 비교)", unsafe_allow_html=True)
+                    st.markdown("<br>#### Forecasted Traffic Curve (유사조건 기반 시간대별 예측)", unsafe_allow_html=True)
+                    st.caption(f"🔎 매칭 방식: **{match_level}** (과거 {matched_days}일 데이터 기반) — {future_weather} · {future_dayname} 조건과 유사한 날들의 시간대별 패턴을 오늘의 예측 총량({total_predicted:,.0f}명)에 맞춰 스케일링했습니다.")
                     
                     band_chart = alt.Chart(pred_curve).mark_area(
                         interpolate='monotone', color='#8B5CF6', opacity=0.15
@@ -1617,7 +1688,16 @@ elif menu == "Demand Forecast":
                     final_chart = (band_chart + baseline_chart + main_line).properties(height=300)
                     st.altair_chart(final_chart, use_container_width=True)
                     
-                    st.caption("💡 **[차트 가이드]** 🟪 진한 실선: 오늘의 예측 추이 / ⬜ 회색 점선: 평소(수요일/맑음) 평균 추이 / 옅은 보라색 띠: AI 예측 오차 범위(±15%)")
+                    st.caption(f"💡 **[차트 가이드]** 🟪 진한 실선: **{future_weather}·{future_dayname}**와 유사한 과거 조건 기반 예측 추이 / ⬜ 회색 점선: 평소(수요일/맑음) 평균 추이 / 옅은 보라색 띠: AI 예측 오차 범위(±15%)")
+
+                    # ✨ [LLM 연동] 시간대별 예측 곡선 요약을 session_state에 저장
+                    peak_row = pred_curve.loc[pred_curve['Expected Visitors'].idxmax()]
+                    st.session_state['timeseries_forecast_summary'] = {
+                        'weather': future_weather, 'day': future_dayname,
+                        'match_level': match_level, 'matched_days': int(matched_days),
+                        'total_predicted': float(total_predicted),
+                        'peak_time': str(peak_row['Time_Str']), 'peak_visitors': float(peak_row['Expected Visitors']),
+                    }
                 except Exception as e: 
                     st.error(f"차트 렌더링 에러: {e}")
 
@@ -1626,7 +1706,8 @@ elif menu == "Demand Forecast":
                 st.markdown("#### 🗣️ AI 매니저 종합 운영 브리핑")
                 
                 briefing_elements = []
-                if "Rainy" in future_weather: briefing_elements.append("**[비 오는 날씨]**")
+                if "Snowy" in future_weather: briefing_elements.append("**[눈 오는 날씨]**")
+                elif "Rainy" in future_weather: briefing_elements.append("**[비 오는 날씨]**")
                 elif "Cloudy" in future_weather: briefing_elements.append("**[흐린 날씨]**")
                 else: briefing_elements.append("**[맑은 날씨]**")
                 
@@ -1639,6 +1720,8 @@ elif menu == "Demand Forecast":
                 
                 if is_pre_holiday: 
                     briefing_detail = "연휴를 준비하는 목적성 쇼핑객이 몰리면서 **주류와 육류(축산)** 코너 등 파티 용품의 트래픽이 폭발할 것으로 예상됩니다. 해당 구역의 메인 매대를 비우고 행사 상품을 전진 배치하는 '공격적 투트랙 전략'을 제안합니다!"
+                elif "Snowy" in future_weather:
+                    briefing_detail = "눈이 오면 외부 이동이 번거로워지면서 고객 수 자체는 줄 수 있지만, 방문한 고객은 **국물요리(라면), 냉동식품, 보온·방한 관련 생활용품** 위주로 목적성 구매를 하는 경향이 있습니다. 해당 구역 재고를 넉넉히 확보하고, 매장 입구 안전(제설·미끄럼 방지)에도 신경 써 주세요. (⚠️ 이 조건은 AI 모델이 충분히 학습하지 못했을 수 있으니 실제 트래픽과 비교하며 참고해 주세요.)"
                 elif "Rainy" in future_weather:
                     briefing_detail = "비가 오기 때문에 고객들이 매장 전체를 둘러보기보다는 **라면(국물요리), 퍼스널케어(우산/위생)** 등 목적지 위주로 빠르게 쇼핑하고 나갈 확률이 높습니다. 해당 상품들을 입구 쪽 통로로 끌어내어 동선을 단축시켜 주는 전략이 유효합니다."
                 elif is_weekend:
@@ -1881,7 +1964,7 @@ elif menu == "Layout Simulator":
             with col_in1:
                 with st.expander("⚙️ 시뮬레이션 환경 조건 (XGBoost 기반)", expanded=True):
                     c1, c2, c3 = st.columns(3)
-                    sim_weather = c1.selectbox("가상 날씨", ["Sunny", "Cloudy", "Rainy"], key="sim_w")
+                    sim_weather = c1.selectbox("가상 날씨", ["Sunny", "Cloudy", "Rainy", "Snowy"], key="sim_w")
                     sim_day = c2.selectbox("가상 요일", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=5, key="sim_d")
                     sim_holiday = c3.selectbox("공휴일 여부", ["No", "Yes"], key="sim_h")
             with col_in2:
@@ -2127,6 +2210,13 @@ elif menu == "LLM Assistant":
                     system_context += f"\n- [최신 수요 예측 시뮬레이션 결과]\n"
                     system_context += f"  * 가상 환경: {st.session_state.get('sim_weather', '알 수 없음')}, {st.session_state.get('sim_day', '알 수 없음')}\n"
                     system_context += f"  * 폭발적 트래픽 집중 예상 구역 Top 3: {pred_str}\n"
+
+                # 2-1. [신규] 시간대별 트래픽 예측(Forecasted Traffic Curve) 결과 주입
+                if 'timeseries_forecast_summary' in st.session_state:
+                    ts = st.session_state['timeseries_forecast_summary']
+                    system_context += f"\n- [시간대별 트래픽 예측 - {ts['weather']}·{ts['day']}]\n"
+                    system_context += f"  * 예측 총량: {ts['total_predicted']:,.0f}명 (매칭 방식: {ts['match_level']}, 과거 {ts['matched_days']}일 데이터 기반)\n"
+                    system_context += f"  * 예상 피크 시간대: {ts['peak_time']} ({ts['peak_visitors']:,.0f}명)\n"
 
                 # 3. [신규] 고객 페르소나(Customer Persona) 분석 결과 주입
                 if 'persona_summary' in st.session_state:
