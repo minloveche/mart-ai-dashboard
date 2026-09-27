@@ -1223,6 +1223,11 @@ elif menu == "Journey Paths":
         with col_j4:
             filter_start = st.selectbox("시작 구역 필터", ["전체"] + list(ZONES.keys()), key="journey_start")
 
+        exact_length_only = st.checkbox(
+            f"✅ 정확히 {path_length}단계를 모두 거친 경로만 보기 (짧은 경로에 묻히지 않도록)",
+            value=True, key="exact_length_only"
+        )
+
         if journey_date == "All Dates (Cumulative)":
             journey_df_raw = df_all
         else:
@@ -1236,6 +1241,13 @@ elif menu == "Journey Paths":
 
                 if filter_start != "전체":
                     path_stats = path_stats[path_stats['path_tuple'].apply(lambda p: p[0] == filter_start)]
+
+                if exact_length_only and not path_stats.empty:
+                    full_length_stats = path_stats[path_stats['path_len'] == path_length]
+                    if full_length_stats.empty:
+                        st.warning(f"⚠️ 정확히 {path_length}단계를 모두 거친 경로가 없어서, 필터를 끄고 전체 길이의 경로를 표시합니다. (더 짧은 단계 수를 선택하거나 필터를 해제해 보세요)")
+                    else:
+                        path_stats = full_length_stats
 
                 if path_stats.empty:
                     st.info("분석 가능한 동선 데이터가 없습니다. (최소 2개 이상의 구역 방문 필요)")
@@ -1389,7 +1401,7 @@ elif menu == "Journey Paths":
                                 cy = (z['y_min'] + z['y_max']) / 2
                                 path_coords.append((cx, cy, zone_name))
 
-                        step_cmap = ['#38BDF8', '#10B981', '#F59E0B', '#F43F5E']
+                        step_cmap = ['#38BDF8', '#10B981', '#F59E0B', '#F43F5E', '#A78BFA']
                         for i, (cx, cy, zn) in enumerate(path_coords):
                             ax_map.scatter(cx, cy, s=500, c=step_cmap[i % len(step_cmap)],
                                            edgecolors='#F8FAFC', linewidths=2, zorder=5)
