@@ -1929,16 +1929,17 @@ elif menu == "AI 맞춤 조건 시뮬레이터":
                         fig.patch.set_facecolor('#0F172A')
                         ax.set_facecolor('#0F172A')
                         if os.path.exists('map_image.jpg'): 
-                            ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], alpha=0.35)
+                            ax.imshow(mpimg.imread('map_image.jpg'), extent=[0, 663, 500, 0], zorder=1, alpha=0.55)
                         else: 
                             ax.set_xlim(0, 663); ax.set_ylim(500, 0); ax.invert_yaxis()
                         
                         if fx:
+                            # ✨ [Heatmap Analysis와 통일] magma(어두운 저값) 대신 Reds(밝은 저값) 컬러맵 사용
                             h, x, y = np.histogram2d(fy, fx, bins=[100, 132], range=[[0, 500], [0, 663]])
                             k = gaussian_filter(h, 4.0)
                             mv = np.max(k)
                             if mv > 0: 
-                                ax.imshow(k, extent=[0, 663, 500, 0], cmap='magma', alpha=0.8, vmin=mv*0.05, vmax=mv)
+                                ax.imshow(k, extent=[0, 663, 500, 0], cmap='Reds', alpha=0.6, zorder=3, vmin=mv*0.01, vmax=mv*0.15)
                         ax.axis('off')
                         st.pyplot(fig)
                     
